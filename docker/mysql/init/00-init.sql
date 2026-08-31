@@ -7,11 +7,9 @@
 SET NAMES utf8mb4;
 SET CHARACTER SET utf8mb4;
 
-ALTER DATABASE maoyan CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-GRANT ALL PRIVILEGES ON maoyan.* TO 'maoyan'@'%';
-FLUSH PRIVILEGES;
+ALTER DATABASE xticket CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-USE maoyan;
+USE xticket;
 
 -- =====================================================
 -- 表结构
