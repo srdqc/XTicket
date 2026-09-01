@@ -966,6 +966,14 @@ $($findingRows -join "`n")
 - 安全边界：前端响应不暴露 SQL、表名、索引名、Java 异常名或数据库错误；非支付座位确认路径的重复键异常不被全局伪装为座位冲突。
 - 回滚验证：冲突后订单仍为待支付，用户积分不变，当前订单 `order_seat=0`，`seat_lock` 仍为暂占；清理测试预置冲突后同一订单可重试支付成功。
 
+## 4.3 seat_lock 冲突错误语义修复结论
+
+- 原问题：两个用户并发锁定同一场次同一座位时，`seat_lock(schedule_id,row_num,col_num)` 唯一索引兜底可保证最多一条锁记录，但旧接口常进入通用 500 响应。
+- 修改前复现：50 轮同座并发中 `SUCCESS_500=49`、`SUCCESS_462=1`、双成功 0、双失败 0，每轮 `seat_lock=1` 且有效 `lockToken=1`。
+- 修复方式：仅在锁座写入 `seat_lock` 的局部上下文捕获 `DuplicateKeyException`，记录受控 WARN 元数据，并立即重新抛出现有 `SEAT_LOCKED(462)` 业务异常。
+- 修复后响应：HTTP 200，业务 `code=462`，`message=所选座位已被他人锁定`。
+- 回滚验证：修复后 50 轮同座并发全部为一个成功加一个 462，500 为 0，双成功为 0；批量锁座包含冲突座位时整体失败，不留下部分锁座。
+
 ## 5. 数据清理
 
 - cleanupCompleted：$cleanupCompleted
@@ -979,6 +987,7 @@ $($findingRows -join "`n")
 - 本轮仅修复支付座位确认冲突的异常映射、验收脚本和本地私人文档。
 - 未修改 Maven 依赖、正式 DDL/初始化 SQL、lockToken 建单幂等逻辑、支付流水、Outbox、电子票、核销、退款、Waiting Room、Redis Lua 座位级锁或领域命名。
 - order_seat 唯一约束冲突返回 500 的 P1 本轮已修复并验证：支付冲突需返回业务 code=409，不泄露 SQL、表名、索引名或 Java 异常名；事务仍完整回滚，清理测试预置冲突后同一订单可重试支付成功。
+- seat_lock 唯一约束冲突返回 500 的 P1 已修复并验证：锁座冲突需返回业务 code=462，不泄露 SQL、表名、索引名或 Java 异常名；不修改锁座算法、唯一约束或锁粒度。
 "@
 
 $report | Set-Content -Path $ReportPath -Encoding UTF8
