@@ -918,24 +918,29 @@ try {
     $respB = $textB | ConvertFrom-Json
     $seatLocks = Get-SeatLockRows "schedule_id = $scheduleId AND row_num = $($seat.row) AND col_num = $($seat.col)"
     $successCount = @(@($respA, $respB) | Where-Object { $_.code -eq 200 }).Count
+    $seatLockedCount = @(@($respA, $respB) | Where-Object { $_.code -eq 462 }).Count
+    $serverErrorCount = @(@($respA, $respB) | Where-Object { $_.code -eq 500 }).Count
     $distinctTokens = @($seatLocks | Where-Object { [int]$_.status -eq 1 -or [int]$_.status -eq 2 } | ForEach-Object { $_.lock_token } | Select-Object -Unique)
     $seatLockCount = @($seatLocks).Count
     $activeTokenCount = @($distinctTokens).Count
-    $pass = ($successCount -le 1 -and $seatLockCount -eq 1 -and $activeTokenCount -le 1)
-    $scenarioResults.Add((New-Scenario "同座竞争" $(if ($pass) { "PASS" } else { "FAIL" }) $(if ($pass) { "最多一个用户锁座成功，同座只有一条锁记录" } else { "同座竞争出现异常" }) ([ordered]@{
+    $pass = ($successCount -eq 1 -and $seatLockedCount -eq 1 -and $serverErrorCount -eq 0 -and $seatLockCount -eq 1 -and $activeTokenCount -eq 1)
+    $scenarioResults.Add((New-Scenario "同座竞争" $(if ($pass) { "PASS" } else { "FAIL" }) $(if ($pass) { "一个用户锁座成功，另一个稳定返回 462，同座只有一条锁记录" } else { "同座竞争出现异常" }) ([ordered]@{
         userA = $userA.account
         userB = $userB.account
         scheduleId = $scheduleId
         seat = $seat.label
         responseA = @{ code = $respA.code; message = $respA.message; lockToken = Mask-Value (Get-ResponseLockToken $respA) }
         responseB = @{ code = $respB.code; message = $respB.message; lockToken = Mask-Value (Get-ResponseLockToken $respB) }
+        successCount = $successCount
+        seatLockedCount = $seatLockedCount
+        serverErrorCount = $serverErrorCount
         seatLockCount = $seatLockCount
         activeTokenCount = $activeTokenCount
         seatLockUsers = (@($seatLocks | ForEach-Object { $_.user_id }) -join ", ")
     }))) | Out-Null
-    if (-not $pass) { Add-Finding $findings "两个用户同座竞争产生重复锁" "P0" "两个 HttpClient 近同时 POST /api/seat/lock" "schedule=$scheduleId seat=$($seat.label)" "后续阶段复核场次锁和唯一索引兜底" }
-    elseif ([int]$respA.code -eq 500 -or [int]$respB.code -eq 500) {
-        Add-Finding $findings "同座竞争失败分支返回 500 而非清晰业务错误" "P1" "两个 HttpClient 近同时 POST /api/seat/lock" "schedule=$scheduleId seat=$($seat.label), responseA=$($respA.code), responseB=$($respB.code)" "后续阶段捕获唯一索引冲突并转换为座位已占用业务响应"
+    if (-not $pass) {
+        $severity = if ($successCount -gt 1 -or $seatLockCount -ne 1 -or $activeTokenCount -ne 1) { "P0" } else { "P1" }
+        Add-Finding $findings "两个用户同座竞争响应不符合预期" $severity "两个 HttpClient 近同时 POST /api/seat/lock" "schedule=$scheduleId seat=$($seat.label), success=$successCount, 462=$seatLockedCount, 500=$serverErrorCount, lockRows=$seatLockCount, tokens=$activeTokenCount" "同座竞争应为一个成功、一个 462，且不返回 500"
     }
 } catch {
     $scenarioResults.Add((New-Scenario "同座竞争" "BLOCKED" $_.Exception.Message @{})) | Out-Null

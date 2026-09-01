@@ -14,9 +14,11 @@ import com.maoyan.domain.model.vo.SeatLayoutVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -130,7 +132,7 @@ public class SeatService {
                 lock.setStatus(1);
                 lock.setCreateTime(now);
                 lock.setUpdateTime(now);
-                seatLockMapper.insert(lock);
+                insertSeatLockOrConflict(lock, dto.getSeats().size());
             }
 
             log.info("[Seat] Locked {} seats for user={}, schedule={}, until={}",
@@ -148,6 +150,31 @@ public class SeatService {
             throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "系统繁忙，请重试");
         }
         return result;
+    }
+
+    private void insertSeatLockOrConflict(SeatLockPO lock, int requestSeatCount) {
+        try {
+            seatLockMapper.insert(lock);
+        } catch (DuplicateKeyException e) {
+            SQLException sqlException = findSqlException(e);
+            log.warn("[Seat] Seat lock conflict: scheduleId={}, row={}, col={}, conflictType=SEAT_LOCK_UNIQUE, springException={}, sqlErrorCode={}, sqlState={}, requestSeatCount={}",
+                    lock.getScheduleId(), lock.getRowNum(), lock.getColNum(), e.getClass().getSimpleName(),
+                    sqlException != null ? sqlException.getErrorCode() : null,
+                    sqlException != null ? sqlException.getSQLState() : null,
+                    requestSeatCount);
+            throw new BizException(ResponseCodeEnum.SEAT_LOCKED);
+        }
+    }
+
+    private SQLException findSqlException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof SQLException sqlException) {
+                return sqlException;
+            }
+            current = current.getCause();
+        }
+        return null;
     }
 
     /**
