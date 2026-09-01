@@ -94,6 +94,20 @@ function Get-BackendLogsForOrder {
     }
 }
 
+function Get-OrderCreatedLogCount {
+    param([string]$OrderNo)
+    if ([string]::IsNullOrWhiteSpace($OrderNo)) { return $null }
+    try {
+        $logs = & docker compose logs --tail=2000 backend 2>&1
+        if ($LASTEXITCODE -ne 0) { return $null }
+        return @($logs | Where-Object {
+            $_.Contains("[Order] Created:") -and $_.Contains($OrderNo)
+        }).Count
+    } catch {
+        return $null
+    }
+}
+
 function Invoke-Api {
     param(
         [ValidateSet("GET", "POST")]
@@ -479,10 +493,17 @@ function Get-FreeSeat {
     param([long]$ScheduleId, [hashtable]$Used)
     $layout = Invoke-Api -Method GET -Path "/api/seat/layout?scheduleId=$ScheduleId"
     if ($layout.code -ne 200) { throw "Seat layout failed: $($layout.message)" }
+    $blocked = @{}
+    $blockedRows = @(Invoke-Db "SELECT CONCAT(row_num, ',', col_num) AS seat_key FROM seat_lock WHERE schedule_id = $ScheduleId UNION SELECT CONCAT(row_num, ',', col_num) AS seat_key FROM order_seat WHERE schedule_id = $ScheduleId")
+    foreach ($blockedRow in $blockedRows) {
+        if ($blockedRow.seat_key) {
+            $blocked[[string]$blockedRow.seat_key] = $true
+        }
+    }
     foreach ($row in $layout.data.seats) {
         foreach ($seat in $row) {
             $key = "$($seat.row),$($seat.col)"
-            if ([int]$seat.status -eq 0 -and -not $Used.ContainsKey($key)) {
+            if ([int]$seat.status -eq 0 -and -not $Used.ContainsKey($key) -and -not $blocked.ContainsKey($key)) {
                 $Used[$key] = $true
                 return [pscustomobject]@{ row = [int]$seat.row; col = [int]$seat.col; label = [string]$seat.label }
             }
@@ -491,20 +512,58 @@ function Get-FreeSeat {
     throw "No free seat found through seat layout API"
 }
 
+function Get-FreeSeats {
+    param([long]$ScheduleId, [hashtable]$Used, [int]$Count)
+    $items = @()
+    for ($i = 0; $i -lt $Count; $i++) {
+        $items += Get-FreeSeat $ScheduleId $Used
+    }
+    return @($items)
+}
+
+function Get-SeatsInfo {
+    param($Seats)
+    return (@($Seats) | ForEach-Object { $_.label }) -join ", "
+}
+
+function To-SeatBody {
+    param($Seats)
+    return @(@($Seats) | ForEach-Object { @{ row = $_.row; col = $_.col } })
+}
+
+function Same-RedisValue {
+    param($Left, $Right)
+    if (-not $Left.ok -or -not $Right.ok) { return $true }
+    return "$($Left.value)" -eq "$($Right.value)"
+}
+
 function Lock-Seat {
     param($User, [long]$ScheduleId, $Seat)
-    $body = @{ scheduleId = $ScheduleId; seats = @(@{ row = $Seat.row; col = $Seat.col }) }
+    return Lock-Seats -User $User -ScheduleId $ScheduleId -Seats @($Seat)
+}
+
+function Lock-Seats {
+    param($User, [long]$ScheduleId, $Seats)
+    $seatBody = @(To-SeatBody $Seats)
+    $body = @{ scheduleId = $ScheduleId; seats = $seatBody }
     return Invoke-Api -Method POST -Path "/api/seat/lock" -Headers $User.headers -Body $body
 }
 
 function Create-Order {
     param($User, [long]$ScheduleId, $Seat, [string]$LockToken)
+    return Create-OrderWithSeats -User $User -ScheduleId $ScheduleId -Seats @($Seat) -LockToken $LockToken -SeatsInfo $Seat.label
+}
+
+function Create-OrderWithSeats {
+    param($User, [long]$ScheduleId, $Seats, [string]$LockToken, [string]$SeatsInfo)
+    $seatList = @($Seats)
+    $seatBody = @(To-SeatBody $seatList)
     $body = @{
         scheduleId = $ScheduleId
         lockToken = $LockToken
-        seats = @(@{ row = $Seat.row; col = $Seat.col })
-        seatCount = 1
-        seatsInfo = $Seat.label
+        seats = $seatBody
+        seatCount = $seatList.Count
+        seatsInfo = $SeatsInfo
     }
     return Invoke-Api -Method POST -Path "/api/order/create" -Headers $User.headers -Body $body
 }
@@ -627,42 +686,88 @@ try {
 
 # Scenario 2: same lockToken repeated create
 try {
-    $seat = Get-FreeSeat $scheduleId $usedSeats
+    $seats = @(Get-FreeSeats $scheduleId $usedSeats 2)
+    $seatCount = $seats.Count
+    $seatsInfo = Get-SeatsInfo $seats
     $beforeStock = Get-Stock $scheduleId
-    $lock = Lock-Seat $userA $scheduleId $seat
+    $lock = Lock-Seats -User $userA -ScheduleId $scheduleId -Seats $seats
     $lockToken = [string]$lock.data.lockToken
-    $create1 = Create-Order $userA $scheduleId $seat $lockToken
-    $create2 = Create-Order $userA $scheduleId $seat $lockToken
-    $afterStock = Get-Stock $scheduleId
-    $orders = Get-OrderRows "user_id = $($userA.id) AND schedule_id = $scheduleId AND lock_token = '$lockToken'"
-    $seatLocks = Get-SeatLockRows "lock_token = '$lockToken'"
+    $create1 = Create-OrderWithSeats -User $userA -ScheduleId $scheduleId -Seats $seats -LockToken $lockToken -SeatsInfo $seatsInfo
+    $create2 = Create-OrderWithSeats -User $userA -ScheduleId $scheduleId -Seats $seats -LockToken $lockToken -SeatsInfo $seatsInfo
+    $reversedSeats = @($seats[1], $seats[0])
+    $reverseRetry = Create-OrderWithSeats -User $userA -ScheduleId $scheduleId -Seats $reversedSeats -LockToken $lockToken -SeatsInfo (Get-SeatsInfo $reversedSeats)
+    $afterInitialRetriesStock = Get-Stock $scheduleId
+    $differentSeats = @(Get-FreeSeats $scheduleId $usedSeats $seatCount)
+    $differentSeatRetry = Create-OrderWithSeats -User $userA -ScheduleId $scheduleId -Seats $differentSeats -LockToken $lockToken -SeatsInfo (Get-SeatsInfo $differentSeats)
+    $differentUserRetry = Create-OrderWithSeats -User $userB -ScheduleId $scheduleId -Seats $seats -LockToken $lockToken -SeatsInfo $seatsInfo
+    $afterConflictRetriesStock = Get-Stock $scheduleId
+    $ordersBeforeCancel = Get-OrderRows "user_id = $($userA.id) AND schedule_id = $scheduleId AND lock_token = '$lockToken'"
+    $seatLocksBeforeCancel = Get-SeatLockRows "lock_token = '$lockToken'"
+    $cancelOriginal = Cancel-Order $userA ([string]$create1.data.orderNo)
+    $afterCancelStock = Get-Stock $scheduleId
+    $retryAfterCancel = Create-OrderWithSeats -User $userA -ScheduleId $scheduleId -Seats $seats -LockToken $lockToken -SeatsInfo $seatsInfo
+    $afterCancelRetryStock = Get-Stock $scheduleId
+    $orders = $ordersBeforeCancel
+    $seatLocks = $seatLocksBeforeCancel
     $orderNos = @($orders | ForEach-Object { $_.order_no })
     $boundOrderNos = @($seatLocks | Where-Object { $_.order_no } | ForEach-Object { $_.order_no } | Select-Object -Unique)
     $orphanOrders = @($orderNos | Where-Object { $boundOrderNos -notcontains $_ })
-    $dbDelta = [int]$beforeStock.db.available_seats - [int]$afterStock.db.available_seats
+    $dbDelta = [int]$beforeStock.db.available_seats - [int]$afterInitialRetriesStock.db.available_seats
     $redisDelta = $null
-    if ($beforeStock.redisStock.ok -and $afterStock.redisStock.ok -and $beforeStock.redisStock.value -match "^-?\d+$" -and $afterStock.redisStock.value -match "^-?\d+$") {
-        $redisDelta = [int]$beforeStock.redisStock.value - [int]$afterStock.redisStock.value
+    if ($beforeStock.redisStock.ok -and $afterInitialRetriesStock.redisStock.ok -and $beforeStock.redisStock.value -match "^-?\d+$" -and $afterInitialRetriesStock.redisStock.value -match "^-?\d+$") {
+        $redisDelta = [int]$beforeStock.redisStock.value - [int]$afterInitialRetriesStock.redisStock.value
     }
+    $orderNo1 = [string]$create1.data.orderNo
     $classification = "FAIL"
     $orderCount = @($orders).Count
-    if ($orderCount -eq 1 -and $dbDelta -eq 1 -and ($null -eq $redisDelta -or $redisDelta -eq 1)) {
-        if ($create2.code -eq 200) { $classification = "PASS_IDEMPOTENT" } else { $classification = "SAFE_BUT_NOT_IDEMPOTENT" }
+    $sameRequestIdempotent = ($create2.code -eq 200 -and [string]$create2.data.orderNo -eq $orderNo1)
+    $reverseRequestIdempotent = ($reverseRetry.code -eq 200 -and [string]$reverseRetry.data.orderNo -eq $orderNo1)
+    $conflictRejected = ($differentSeatRetry.code -ne 200 -and $differentUserRetry.code -ne 200)
+    $conflictNoStockLeak = ([int]$afterConflictRetriesStock.db.available_seats -eq [int]$afterInitialRetriesStock.db.available_seats) -and (Same-RedisValue $afterConflictRetriesStock.redisStock $afterInitialRetriesStock.redisStock)
+    $cancelRestoredStock = ([int]$afterCancelStock.db.available_seats - [int]$afterConflictRetriesStock.db.available_seats) -eq $seatCount
+    $retryAfterCancelNoNewOrder = ([string]$retryAfterCancel.data.orderNo -eq $orderNo1)
+    $retryAfterCancelNoStockChange = ([int]$afterCancelRetryStock.db.available_seats -eq [int]$afterCancelStock.db.available_seats) -and (Same-RedisValue $afterCancelRetryStock.redisStock $afterCancelStock.redisStock)
+    if ($orderCount -eq 1 -and $dbDelta -eq $seatCount -and ($null -eq $redisDelta -or $redisDelta -eq $seatCount) -and
+        $sameRequestIdempotent -and $reverseRequestIdempotent -and $conflictRejected -and $conflictNoStockLeak -and
+        $cancelRestoredStock -and $retryAfterCancelNoNewOrder -and $retryAfterCancelNoStockChange) {
+        $classification = "PASS_IDEMPOTENT"
+    } elseif ($orderCount -eq 1 -and $dbDelta -eq $seatCount -and ($null -eq $redisDelta -or $redisDelta -eq $seatCount) -and $conflictNoStockLeak) {
+        $classification = "SAFE_BUT_NOT_IDEMPOTENT"
     }
-    $resultForReport = $(if ($classification -eq "PASS_IDEMPOTENT") { "PASS" } elseif ($classification -eq "SAFE_BUT_NOT_IDEMPOTENT") { "SAFE_BUT_NOT_IDEMPOTENT" } else { "FAIL" })
+    $resultForReport = $classification
     $scenarioResults.Add((New-Scenario "重复建单" $resultForReport $classification ([ordered]@{
         lockToken = Mask-Value $lockToken
-        seat = $seat.label
+        seats = $seatsInfo
         firstResponse = @{ code = $create1.code; message = $create1.message; orderNo = $create1.data.orderNo; status = $create1.data.status }
         secondResponse = @{ code = $create2.code; message = $create2.message; orderNo = $create2.data.orderNo; status = $create2.data.status }
+        reversedSeatsResponse = @{ code = $reverseRetry.code; message = $reverseRetry.message; orderNo = $reverseRetry.data.orderNo; status = $reverseRetry.data.status }
+        differentSeats = Get-SeatsInfo $differentSeats
+        differentSeatResponse = @{ code = $differentSeatRetry.code; message = $differentSeatRetry.message }
+        differentUserResponse = @{ code = $differentUserRetry.code; message = $differentUserRetry.message }
+        cancelOriginalResponse = @{ code = $cancelOriginal.code; message = $cancelOriginal.message }
+        retryAfterCancelResponse = @{ code = $retryAfterCancel.code; message = $retryAfterCancel.message; orderNo = $retryAfterCancel.data.orderNo; status = $retryAfterCancel.data.status }
         orderCount = $orderCount
         orderNos = $orderNos
+        seatCount = $seatCount
         dbStockBefore = $beforeStock.db.available_seats
-        dbStockAfter = $afterStock.db.available_seats
+        dbStockAfter = $afterInitialRetriesStock.db.available_seats
+        dbStockAfterConflictRetries = $afterConflictRetriesStock.db.available_seats
+        dbStockAfterCancel = $afterCancelStock.db.available_seats
+        dbStockAfterCancelRetry = $afterCancelRetryStock.db.available_seats
         redisStockBefore = $(if ($beforeStock.redisStock.ok) { $beforeStock.redisStock.value } else { "UNAVAILABLE: $($beforeStock.redisStock.error)" })
-        redisStockAfter = $(if ($afterStock.redisStock.ok) { $afterStock.redisStock.value } else { "UNAVAILABLE: $($afterStock.redisStock.error)" })
+        redisStockAfter = $(if ($afterInitialRetriesStock.redisStock.ok) { $afterInitialRetriesStock.redisStock.value } else { "UNAVAILABLE: $($afterInitialRetriesStock.redisStock.error)" })
+        redisStockAfterConflictRetries = $(if ($afterConflictRetriesStock.redisStock.ok) { $afterConflictRetriesStock.redisStock.value } else { "UNAVAILABLE: $($afterConflictRetriesStock.redisStock.error)" })
+        redisStockAfterCancel = $(if ($afterCancelStock.redisStock.ok) { $afterCancelStock.redisStock.value } else { "UNAVAILABLE: $($afterCancelStock.redisStock.error)" })
+        redisStockAfterCancelRetry = $(if ($afterCancelRetryStock.redisStock.ok) { $afterCancelRetryStock.redisStock.value } else { "UNAVAILABLE: $($afterCancelRetryStock.redisStock.error)" })
         seatLockOrderNo = (@($seatLocks | ForEach-Object { $_.order_no }) -join ", ")
         orphanOrders = $orphanOrders
+        sameRequestIdempotent = $sameRequestIdempotent
+        reverseRequestIdempotent = $reverseRequestIdempotent
+        conflictRejected = $conflictRejected
+        conflictNoStockLeak = $conflictNoStockLeak
+        retryAfterCancelNoNewOrder = $retryAfterCancelNoNewOrder
+        retryAfterCancelNoStockChange = $retryAfterCancelNoStockChange
+        orderCreatedLogCount = Get-OrderCreatedLogCount $orderNo1
     }))) | Out-Null
     if ($resultForReport -eq "FAIL") {
         Add-Finding $findings "同一 lockToken 重复建单产生不安全副作用" "P0" "同一 lockToken 连续 POST /api/order/create 两次" "orders=$orderCount, dbDelta=$dbDelta, redisDelta=$redisDelta, orphanOrders=$($orphanOrders -join ',')" "后续阶段考虑锁座令牌消费状态或请求幂等，但本轮不修复"
@@ -945,8 +1050,8 @@ $($findingRows -join "`n")
 - 本轮通过 localhost HTTP API 执行业务操作。
 - 除将专用测试订单 expire_time 调整到过去外，未通过 SQL 模拟业务结果。
 - 未输出完整 Token、测试密码或数据库密码。
-- 未修改 Controller/Biz/Service/Mapper/DTO/VO/PO、前端业务代码、Maven 依赖或交易业务逻辑。
-- 本轮按 Docker 运行环境恢复要求调整了 Docker 配置、Docker Profile 数据源配置、Nginx 配置、RocketMQ Broker 配置和 MySQL 初始化脚本。
+- Phase 1A 仅修复同一 lockToken 重复建单的幂等与库存一致性问题。
+- 未修改前端代码、Maven 依赖、支付流水、Outbox、电子票、核销、退款、Waiting Room 或领域命名。
 "@
 
 $report | Set-Content -Path $ReportPath -Encoding UTF8

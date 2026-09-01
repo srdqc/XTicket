@@ -49,7 +49,14 @@ public interface SeatLockMapper extends BaseMapper<SeatLockPO> {
                                               @Param("lockToken") String lockToken,
                                               @Param("now") LocalDateTime now);
 
-    @Update("UPDATE seat_lock SET order_no = #{orderNo}, lock_until = #{lockUntil}, update_time = #{now} WHERE schedule_id = #{scheduleId} AND user_id = #{userId} AND lock_token = #{lockToken} AND status = 1 AND lock_until > #{now}")
+    @Select("SELECT * FROM seat_lock WHERE lock_token = #{lockToken} AND status = 1 AND lock_until > #{now}")
+    List<SeatLockPO> selectActiveLocksByTokenOnly(@Param("lockToken") String lockToken,
+                                                  @Param("now") LocalDateTime now);
+
+    @Select("SELECT * FROM seat_lock WHERE lock_token = #{lockToken}")
+    List<SeatLockPO> selectLocksByToken(@Param("lockToken") String lockToken);
+
+    @Update("UPDATE seat_lock SET order_no = #{orderNo}, lock_until = #{lockUntil}, update_time = #{now} WHERE schedule_id = #{scheduleId} AND user_id = #{userId} AND lock_token = #{lockToken} AND status = 1 AND order_no IS NULL AND lock_until > #{now}")
     int bindLocksToOrder(@Param("scheduleId") Long scheduleId,
                          @Param("userId") Long userId,
                          @Param("lockToken") String lockToken,

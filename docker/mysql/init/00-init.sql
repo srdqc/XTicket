@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS ticket_order (
     order_no        VARCHAR(64)   NOT NULL UNIQUE COMMENT '订单编号',
     user_id         BIGINT        NOT NULL      COMMENT '用户ID',
     schedule_id     BIGINT        NOT NULL      COMMENT '场次ID',
-    lock_token      VARCHAR(64)                 COMMENT '锁座令牌',
+    lock_token      VARCHAR(64)   NOT NULL      COMMENT '锁座令牌',
     movie_name      VARCHAR(200)                COMMENT '电影名（冗余）',
     cinema_name     VARCHAR(200)                COMMENT '影院名（冗余）',
     hall_name       VARCHAR(50)                 COMMENT '厅名（冗余）',
@@ -179,7 +179,8 @@ CREATE TABLE IF NOT EXISTS ticket_order (
     update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted         INT           DEFAULT 0,
     INDEX idx_order_user (user_id, status, deleted),
-    INDEX idx_order_no (order_no)
+    INDEX idx_order_no (order_no),
+    UNIQUE INDEX uq_ticket_order_lock_token (lock_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS user_wish (

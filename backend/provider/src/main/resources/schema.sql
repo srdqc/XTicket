@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS ticket_order (
     order_no        VARCHAR(64)   NOT NULL UNIQUE COMMENT '订单编号',
     user_id         BIGINT        NOT NULL      COMMENT '用户ID',
     schedule_id     BIGINT        NOT NULL      COMMENT '场次ID',
-    lock_token      VARCHAR(64)                 COMMENT '锁座令牌',
+    lock_token      VARCHAR(64)   NOT NULL      COMMENT '锁座令牌',
     movie_name      VARCHAR(200)                COMMENT '电影名（冗余）',
     cinema_name     VARCHAR(200)                COMMENT '影院名（冗余）',
     hall_name       VARCHAR(50)                 COMMENT '厅名（冗余）',
@@ -233,6 +233,7 @@ CREATE INDEX IF NOT EXISTS idx_schedule_movie ON movie_schedule(movie_id, show_d
 CREATE INDEX IF NOT EXISTS idx_schedule_cinema ON movie_schedule(cinema_id, show_date, deleted);
 CREATE INDEX IF NOT EXISTS idx_order_user   ON ticket_order(user_id, status, deleted);
 CREATE INDEX IF NOT EXISTS idx_order_no     ON ticket_order(order_no);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ticket_order_lock_token ON ticket_order(lock_token);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_wish_unique ON user_wish(user_id, movie_id);
 CREATE INDEX IF NOT EXISTS idx_hall_cinema ON cinema_hall(cinema_id, deleted);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_hall_unique ON cinema_hall(cinema_id, hall_name, deleted);
