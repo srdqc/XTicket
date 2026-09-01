@@ -531,35 +531,68 @@ try {
     }
 
     # Scenario 2: order_seat duplicate insert rollback.
+    $preseedId = $null
     try {
         $pending = Create-PendingOrder $userA $scheduleId $usedSeats 1
         $orderNo = $pending.orderNo
         $orderBefore = Get-Order $orderNo
         $seat = @($pending.seats)[0]
         $pointsBefore = Get-UserPoints $userA.id
-        $preseed = @(Invoke-DbRows "INSERT INTO order_seat(order_id, order_no, schedule_id, row_num, col_num, seat_label) VALUES ($($orderBefore.id), '$orderNo', $scheduleId, $($seat.row), $($seat.col), '$($seat.label)'); SELECT LAST_INSERT_ID() AS id;")[0]
+        $conflictOrderNo = "PRESEED_$(Escape-Sql $orderNo)"
+        $preseed = @(Invoke-DbRows "INSERT INTO order_seat(order_id, order_no, schedule_id, row_num, col_num, seat_label) VALUES (0, '$conflictOrderNo', $scheduleId, $($seat.row), $($seat.col), '$($seat.label)'); SELECT LAST_INSERT_ID() AS id;")[0]
+        $preseedId = [long]$preseed.id
         $pay = Pay-Order $userA $orderNo
         $pointsAfter = Get-UserPoints $userA.id
         $orderAfter = Get-Order $orderNo
         $orderSeatCount = Get-OrderSeatCount $orderNo
         $locks = @(Get-SeatLocksByOrder $orderNo)
-        $pass = ($pay.code -ne 200 -and $pointsBefore -eq $pointsAfter -and [int]$orderAfter.status -eq 0 -and $orderSeatCount -eq 1 -and @($locks | Where-Object { [int]$_.status -eq 2 }).Count -eq 0)
-        $scenarioResults.Add((New-Scenario "order_seat 插入失败回滚" $(if ($pass) { "PASS" } else { "FAIL" }) $(if ($pass) { "唯一约束冲突后订单、积分和锁座状态回滚；接口返回非业务化错误需后续观察" } else { "order_seat 冲突后事务状态异常" }) ([ordered]@{
+        $preseedRows = [int](Invoke-DbScalar "SELECT COUNT(*) FROM order_seat WHERE id = $preseedId AND order_no = '$conflictOrderNo'")
+        $leakWords = @("SQL", "Duplicate entry", "constraint", "index", "order_seat", "idx_order_seat", "DuplicateKeyException", "DataIntegrityViolationException", "java.")
+        $messageText = [string]$pay.message
+        $messageSafe = $true
+        foreach ($word in $leakWords) {
+            if ($messageText -like "*$word*") { $messageSafe = $false }
+        }
+        $conflictMapped = ($pay.code -eq 409 -and $messageText -like "*座位*" -and $messageText -like "*支付失败*" -and $messageSafe)
+        $rollbackOk = ($pointsBefore -eq $pointsAfter -and [int]$orderAfter.status -eq 0 -and $orderSeatCount -eq 0 -and @($locks | Where-Object { [int]$_.status -eq 1 }).Count -eq 1 -and $preseedRows -eq 1)
+        $logsAfterConflict = @(Get-BackendLogsForOrder $orderNo)
+        $paidLogBeforeRetry = @($logsAfterConflict | Where-Object { $_ -like "*[Payment] Order paid*" }).Count
+        Invoke-DbExec "DELETE FROM order_seat WHERE id = $preseedId"
+        $preseedId = $null
+        $retryPay = Pay-Order $userA $orderNo
+        $pointsAfterRetry = Get-UserPoints $userA.id
+        $orderAfterRetry = Get-Order $orderNo
+        $orderSeatCountAfterRetry = Get-OrderSeatCount $orderNo
+        $locksAfterRetry = @(Get-SeatLocksByOrder $orderNo)
+        $cost = [int][Math]::Ceiling([decimal]$orderBefore.total_price)
+        $retryOk = ($retryPay.code -eq 200 -and [int]$orderAfterRetry.status -eq 1 -and ($pointsBefore - $pointsAfterRetry) -eq $cost -and $orderSeatCountAfterRetry -eq [int]$orderBefore.seat_count -and @($locksAfterRetry | Where-Object { [int]$_.status -eq 2 }).Count -eq [int]$orderBefore.seat_count)
+        $pass = ($conflictMapped -and $rollbackOk -and $paidLogBeforeRetry -eq 0 -and $retryOk)
+        $scenarioResults.Add((New-Scenario "order_seat 插入失败回滚与错误映射" $(if ($pass) { "PASS" } else { "FAIL" }) $(if ($pass) { "座位确认唯一冲突返回业务 409，事务完整回滚；清理冲突后同一订单可支付成功" } else { "order_seat 冲突回滚、错误映射或重试支付异常" }) ([ordered]@{
             orderNo = $orderNo
             preseedOrderSeatId = $preseed.id
+            preseedOrderNo = $conflictOrderNo
             payResponse = @{ httpStatus = $pay.httpStatus; code = $pay.code; message = $pay.message }
+            messageSafe = $messageSafe
+            conflictMapped = $conflictMapped
             pointsBefore = $pointsBefore
-            pointsAfter = $pointsAfter
-            orderStatus = Status-Text $orderAfter.status
-            orderSeatCountIncludingPreseed = $orderSeatCount
+            pointsAfterConflict = $pointsAfter
+            orderStatusAfterConflict = Status-Text $orderAfter.status
+            currentOrderSeatCountAfterConflict = $orderSeatCount
+            preseedRowsAfterConflict = $preseedRows
             seatLockStatuses = (@($locks | ForEach-Object { $_.status }) -join ", ")
+            paidLogBeforeRetry = $paidLogBeforeRetry
+            retryResponse = @{ httpStatus = $retryPay.httpStatus; code = $retryPay.code; message = $retryPay.message }
+            pointsAfterRetry = $pointsAfterRetry
+            orderStatusAfterRetry = Status-Text $orderAfterRetry.status
+            orderSeatCountAfterRetry = $orderSeatCountAfterRetry
+            seatLockStatusesAfterRetry = (@($locksAfterRetry | ForEach-Object { $_.status }) -join ", ")
         }))) | Out-Null
-        if ($pass -and $pay.code -eq 500) { Add-Finding $findings "order_seat 唯一约束冲突返回 500" "P1" "支付前预置同场次同座位 order_seat 后调用支付" "order=$orderNo, code=500" "建议独立分支 fix/payment-seat-confirmation-rollback 统一异常响应" }
-        if (-not $pass) { Add-Finding $findings "order_seat 插入失败导致事务不完整" "P0" "支付时触发 order_seat 唯一约束冲突" "order=$orderNo" "建议独立分支 fix/payment-seat-confirmation-rollback" }
-        Invoke-DbExec "DELETE FROM order_seat WHERE id = $($preseed.id)"
-        Cancel-Order $userA $orderNo | Out-Null
+        if (-not $pass) { Add-Finding $findings "order_seat 座位确认冲突处理异常" "P0" "支付时触发 order_seat 唯一约束冲突并清理后重试" "order=$orderNo, code=$($pay.code)" "检查 PaymentService 座位确认异常转换和事务回滚" }
     } catch {
-        $scenarioResults.Add((New-Scenario "order_seat 插入失败回滚" "BLOCKED" $_.Exception.Message @{})) | Out-Null
+        if ($preseedId) {
+            Invoke-DbExec "DELETE FROM order_seat WHERE id = $preseedId"
+        }
+        $scenarioResults.Add((New-Scenario "order_seat 插入失败回滚与错误映射" "BLOCKED" $_.Exception.Message @{})) | Out-Null
     }
 
     # Scenario 3: Redis pre-deduct succeeds but MySQL stock deduction fails.
@@ -923,7 +956,15 @@ $($findingRows -join "`n")
 - 关闭来源：过期支付场景的后端日志显示 `source=PAYMENT_LAZY_EXPIRE` 且 `casAffectedRows=1`，说明第一次支付请求完成懒关闭；纯定时场景显示 `source=TIMEOUT_SCHEDULER`。
 - 第一次过期支付响应：`code=409`，`message=订单已过期并自动取消，无法支付`。
 - 第二次过期支付响应：`code=409`，`message=订单已取消，无法支付`。
-- 前端状态同步：支付页倒计时归零后会将本页视为过期不可支付并重新拉取订单详情；支付接口返回过期或取消时也会重新拉取订单详情。当前环境未执行可点击浏览器人工验收，需要用户在浏览器中复核最终展示。
+- 前端状态同步：支付页倒计时归零后会将本页视为过期不可支付并重新拉取订单详情；支付接口返回过期或取消时也会重新拉取订单详情。用户已人工验收前端倒计时归零后的状态刷新通过。
+
+## 4.2 order_seat 冲突错误语义修复结论
+
+- 原问题：支付确认座位时，`order_seat(schedule_id,row_num,col_num)` 唯一索引冲突会正确触发事务回滚，但旧接口进入通用 500 响应。
+- 修复方式：仅在支付座位确认的局部上下文捕获 `DuplicateKeyException`，记录受控 WARN 元数据，并立即重新抛出运行时 `BizException`。
+- 修复后响应：HTTP 200，业务 `code=409`，`message=所选座位已被其他订单确认，支付失败，请重新选座`。
+- 安全边界：前端响应不暴露 SQL、表名、索引名、Java 异常名或数据库错误；非支付座位确认路径的重复键异常不被全局伪装为座位冲突。
+- 回滚验证：冲突后订单仍为待支付，用户积分不变，当前订单 `order_seat=0`，`seat_lock` 仍为暂占；清理测试预置冲突后同一订单可重试支付成功。
 
 ## 5. 数据清理
 
@@ -935,9 +976,9 @@ $($findingRows -join "`n")
 
 ## 6. 执行边界
 
-- 本轮允许修复过期订单关闭相关后端逻辑、最小前端状态同步、测试脚本和本地私人文档。
+- 本轮仅修复支付座位确认冲突的异常映射、验收脚本和本地私人文档。
 - 未修改 Maven 依赖、正式 DDL/初始化 SQL、lockToken 建单幂等逻辑、支付流水、Outbox、电子票、核销、退款、Waiting Room、Redis Lua 座位级锁或领域命名。
-- order_seat 唯一约束冲突返回 500 的 P1 本轮继续记录，不在当前修复中处理。
+- order_seat 唯一约束冲突返回 500 的 P1 本轮已修复并验证：支付冲突需返回业务 code=409，不泄露 SQL、表名、索引名或 Java 异常名；事务仍完整回滚，清理测试预置冲突后同一订单可重试支付成功。
 "@
 
 $report | Set-Content -Path $ReportPath -Encoding UTF8
