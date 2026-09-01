@@ -86,9 +86,9 @@ spring:
     exclude: []
 
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:mysql}:3306/maoyan?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&connectTimeout=3000&socketTimeout=8000
+    url: jdbc:mysql://${MYSQL_HOST:mysql}:3306/${MYSQL_DATABASE:xticket}?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&connectTimeout=3000&socketTimeout=8000
     driver-class-name: com.mysql.cj.jdbc.Driver
-    username: ${MYSQL_USER:maoyan}
+    username: ${MYSQL_USER:xticket}
     password: ${MYSQL_PASSWORD:}
   sql:
     init:

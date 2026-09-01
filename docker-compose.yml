@@ -20,8 +20,8 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-maoyan}
-      MYSQL_USER: ${MYSQL_USER:-maoyan}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-xticket}
+      MYSQL_USER: ${MYSQL_USER:-xticket}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
       TZ: Asia/Shanghai
     ports:
@@ -113,14 +113,16 @@ services:
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      TZ: Asia/Shanghai
       MYSQL_HOST: mysql
-      MYSQL_USER: ${MYSQL_USER:-maoyan}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-xticket}
+      MYSQL_USER: ${MYSQL_USER:-xticket}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       ROCKETMQ_NAMESRV: rocketmq-namesrv:9876
-      JAVA_OPTS: "-Xms128m -Xmx200m -XX:+UseSerialGC -XX:MaxMetaspaceSize=96m -Xss256k"
+      JAVA_OPTS: "-Xms128m -Xmx200m -XX:+UseSerialGC -XX:MaxMetaspaceSize=96m -Xss256k -Duser.timezone=Asia/Shanghai"
     mem_limit: 350m
     expose:
       - "8080"

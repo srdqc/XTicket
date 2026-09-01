@@ -24,14 +24,18 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -48,6 +52,7 @@ public class OrderService {
     private final OrderSeatMapper orderSeatMapper;
     private final StockService stockService;
     private final DistributedLockService lockService;
+    private final PlatformTransactionManager transactionManager;
 
     @Autowired(required = false)
     private RocketMQTemplate rocketMQTemplate;
@@ -55,7 +60,6 @@ public class OrderService {
     private static final DateTimeFormatter ORDER_NO_FMT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private static final DateTimeFormatter VO_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    @Transactional(rollbackFor = Exception.class, timeout = 8)
     public OrderVO createOrder(Long userId, CreateOrderDTO dto) {
         if (dto.getSeatCount() == null || dto.getSeatCount() <= 0) {
             throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "购票数量不合法");
@@ -63,11 +67,30 @@ public class OrderService {
 
         Long scheduleId = dto.getScheduleId();
         OrderVO result = lockService.executeWithBoundedLock("seat:" + scheduleId, 3, 12,
-                () -> createOrderInScheduleLock(userId, dto));
+                () -> createOrderInTransaction(userId, dto));
         if (result == null) {
             throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "系统繁忙，请重试");
         }
         return result;
+    }
+
+    private OrderVO createOrderInTransaction(Long userId, CreateOrderDTO dto) {
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setTimeout(8);
+        try {
+            return template.execute(status -> createOrderInScheduleLock(userId, dto));
+        } catch (DuplicateKeyException e) {
+            String lockToken = normalize(dto.getLockToken());
+            if (lockToken == null) {
+                throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "lockToken 已被消费，请重新查询订单");
+            }
+            OrderPO existingOrder = orderMapper.selectByLockToken(lockToken);
+            if (existingOrder == null) {
+                throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "lockToken 已被消费，请重新查询订单");
+            }
+            Set<String> requestedSeats = normalizeRequestSeats(dto, dto.getSeatCount());
+            return handleConsumedLockToken(userId, dto, lockToken, requestedSeats, existingOrder);
+        }
     }
 
     private OrderVO createOrderInScheduleLock(Long userId, CreateOrderDTO dto) {
@@ -87,8 +110,14 @@ public class OrderService {
             lockToken = lockSeatsForOrder(userId, schedule, dto, now);
         }
 
-        List<SeatLockPO> lockedSeats = seatLockMapper.selectActiveLocksByToken(scheduleId, userId, lockToken, now);
-        validateLockedSeats(dto, lockedSeats, seatCount);
+        Set<String> requestedSeats = normalizeRequestSeats(dto, seatCount);
+        OrderPO existingOrder = orderMapper.selectByLockToken(lockToken);
+        if (existingOrder != null) {
+            return handleConsumedLockToken(userId, dto, lockToken, requestedSeats, existingOrder);
+        }
+
+        List<SeatLockPO> lockedSeats = seatLockMapper.selectActiveLocksByTokenOnly(lockToken, now);
+        validateUsableLockToken(userId, scheduleId, lockToken, requestedSeats, lockedSeats, seatCount);
 
         long remaining = stockService.preDeduct(scheduleId, seatCount);
         if (remaining < 0) {
@@ -105,7 +134,6 @@ public class OrderService {
             if (affected == 0) {
                 throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "库存扣减失败，请重新下单");
             }
-            refreshScheduleDetailCache(scheduleId);
 
             String orderNo = generateOrderNo(userId);
             OrderPO order = buildPendingOrder(userId, dto, latest, lockToken, orderNo, now);
@@ -114,9 +142,10 @@ public class OrderService {
             int bound = seatLockMapper.bindLocksToOrder(scheduleId, userId, lockToken, orderNo,
                     order.getExpireTime(), now);
             if (bound != seatCount) {
-                throw new BizException(ResponseCodeEnum.SEAT_LOCK_EXPIRED);
+                throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "锁座绑定数量不匹配，请重新选座");
             }
 
+            refreshScheduleDetailCache(scheduleId);
             sendOrderEvent(OrderEvent.Type.CREATED, order);
             log.info("[Order] Created: orderNo={}, userId={}, scheduleId={}, seats={}, total={}",
                     orderNo, userId, scheduleId, seatCount, order.getTotalPrice());
@@ -125,6 +154,11 @@ public class OrderService {
             if (e.getCode() != ResponseCodeEnum.STOCK_NOT_ENOUGH.getCode()) {
                 stockService.rollback(scheduleId, seatCount);
             }
+            throw e;
+        } catch (DuplicateKeyException e) {
+            stockService.rollback(scheduleId, seatCount);
+            log.warn("[Order] Duplicate lockToken when creating order, stock rolled back: scheduleId={}, lockToken={}",
+                    scheduleId, maskLockToken(lockToken));
             throw e;
         } catch (Exception e) {
             stockService.rollback(scheduleId, seatCount);
@@ -184,22 +218,82 @@ public class OrderService {
         return lockToken;
     }
 
-    private void validateLockedSeats(CreateOrderDTO dto, List<SeatLockPO> lockedSeats, int seatCount) {
-        if (lockedSeats == null || lockedSeats.size() != seatCount) {
-            throw new BizException(ResponseCodeEnum.SEAT_LOCK_EXPIRED);
+    private OrderVO handleConsumedLockToken(Long userId, CreateOrderDTO dto, String lockToken,
+                                            Set<String> requestedSeats, OrderPO existingOrder) {
+        if (!existingOrder.getUserId().equals(userId)) {
+            throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "lockToken 已被其他用户使用");
         }
-        if (dto.getSeats() == null || dto.getSeats().isEmpty()) {
-            return;
+        if (!existingOrder.getScheduleId().equals(dto.getScheduleId())) {
+            throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "lockToken 对应场次与请求不一致");
         }
-        Set<String> requestSeats = dto.getSeats().stream()
-                .map(s -> s.getRow() + "," + s.getCol())
-                .collect(Collectors.toSet());
-        Set<String> locked = lockedSeats.stream()
+        if (!existingOrder.getSeatCount().equals(dto.getSeatCount())) {
+            throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "lockToken 对应座位数量与请求不一致");
+        }
+
+        List<SeatLockPO> tokenLocks = seatLockMapper.selectLocksByToken(lockToken);
+        if (!tokenLocks.isEmpty()) {
+            Set<String> lockedSeats = normalizeLockedSeats(tokenLocks);
+            if (!requestedSeats.equals(lockedSeats)) {
+                throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "lockToken 对应座位与请求不一致");
+            }
+        }
+
+        log.info("[Order] Idempotent create hit: lockToken={}, orderNo={}",
+                maskLockToken(lockToken), existingOrder.getOrderNo());
+        return toVO(existingOrder);
+    }
+
+    private void validateUsableLockToken(Long userId, Long scheduleId, String lockToken,
+                                         Set<String> requestedSeats, List<SeatLockPO> lockedSeats,
+                                         int seatCount) {
+        if (lockedSeats == null || lockedSeats.isEmpty()) {
+            throw new BizException(ResponseCodeEnum.SEAT_LOCK_EXPIRED.getCode(),
+                    "lockToken 已失效或不存在，请重新选座");
+        }
+        if (lockedSeats.size() != seatCount) {
+            throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "lockToken 对应座位数量与请求不一致");
+        }
+
+        for (SeatLockPO lock : lockedSeats) {
+            if (!lock.getUserId().equals(userId)) {
+                throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "lockToken 属于其他用户");
+            }
+            if (!lock.getScheduleId().equals(scheduleId)) {
+                throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "lockToken 属于其他场次");
+            }
+            if (lock.getOrderNo() != null && !lock.getOrderNo().isBlank()) {
+                throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "lockToken 已绑定其他订单");
+            }
+        }
+
+        Set<String> locked = normalizeLockedSeats(lockedSeats);
+        if (!requestedSeats.equals(locked)) {
+            throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "lockToken 对应座位与请求不一致");
+        }
+    }
+
+    private Set<String> normalizeRequestSeats(CreateOrderDTO dto, int seatCount) {
+        List<LockSeatsDTO.SeatPos> seats = dto.getSeats();
+        if (seats == null || seats.isEmpty()) {
+            throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "请选择座位");
+        }
+        Set<String> requestSeats = new LinkedHashSet<>();
+        for (LockSeatsDTO.SeatPos seat : seats) {
+            String seatKey = seat.getRow() + "," + seat.getCol();
+            if (!requestSeats.add(seatKey)) {
+                throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "不能重复选择同一座位");
+            }
+        }
+        if (requestSeats.size() != seatCount) {
+            throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "座位数量与购票数量不一致");
+        }
+        return requestSeats;
+    }
+
+    private Set<String> normalizeLockedSeats(List<SeatLockPO> lockedSeats) {
+        return lockedSeats.stream()
                 .map(s -> s.getRowNum() + "," + s.getColNum())
                 .collect(Collectors.toSet());
-        if (!requestSeats.equals(locked)) {
-            throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "锁座信息与下单座位不一致");
-        }
     }
 
     private OrderPO buildPendingOrder(Long userId, CreateOrderDTO dto, SchedulePO schedule,
@@ -351,5 +445,12 @@ public class OrderService {
             return null;
         }
         return value.trim();
+    }
+
+    private String maskLockToken(String lockToken) {
+        if (lockToken == null || lockToken.length() <= 12) {
+            return "***";
+        }
+        return lockToken.substring(0, 6) + "..." + lockToken.substring(lockToken.length() - 4);
     }
 }
