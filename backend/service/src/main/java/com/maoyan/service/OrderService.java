@@ -14,7 +14,6 @@ import com.maoyan.domain.model.dto.CreateOrderDTO;
 import com.maoyan.domain.model.dto.LockSeatsDTO;
 import com.maoyan.domain.model.event.OrderEvent;
 import com.maoyan.domain.model.po.OrderPO;
-import com.maoyan.domain.model.po.OrderSeatPO;
 import com.maoyan.domain.model.po.SchedulePO;
 import com.maoyan.domain.model.po.SeatLockPO;
 import com.maoyan.domain.model.vo.OrderVO;
@@ -53,6 +52,7 @@ public class OrderService {
     private final StockService stockService;
     private final DistributedLockService lockService;
     private final PlatformTransactionManager transactionManager;
+    private final OrderClosureService orderClosureService;
 
     @Autowired(required = false)
     private RocketMQTemplate rocketMQTemplate;
@@ -331,7 +331,7 @@ public class OrderService {
             throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "当前订单状态不允许取消");
         }
 
-        closePendingOrder(order, "USER_CANCEL");
+        orderClosureService.closePendingOrder(orderNo, "USER_CANCEL");
     }
 
     @Scheduled(fixedDelay = 60000)
@@ -343,26 +343,11 @@ public class OrderService {
         }
         for (OrderPO order : expired) {
             try {
-                closePendingOrder(order, "TIMEOUT");
+                orderClosureService.closeExpiredOrder(order.getOrderNo(), "TIMEOUT_SCHEDULER");
             } catch (Exception e) {
                 log.error("[Order] Failed to close expired order: orderNo={}", order.getOrderNo(), e);
             }
         }
-    }
-
-    private void closePendingOrder(OrderPO order, String reason) {
-        LocalDateTime now = LocalDateTime.now();
-        int closed = orderMapper.closePendingOrder(order.getOrderNo(), now);
-        if (closed == 0) {
-            return;
-        }
-        scheduleMapper.rollbackStock(order.getScheduleId(), order.getSeatCount());
-        stockService.rollback(order.getScheduleId(), order.getSeatCount());
-        refreshScheduleDetailCache(order.getScheduleId());
-        seatLockMapper.releaseOrderLocks(order.getOrderNo());
-        sendOrderEvent(OrderEvent.Type.CANCELLED, order);
-        log.info("[Order] Closed: orderNo={}, reason={}, seatsReturned={}",
-                order.getOrderNo(), reason, order.getSeatCount());
     }
 
     public List<OrderVO> getUserOrders(Long userId, int page, int size) {

@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState, useEffect, useRef } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Coins, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -19,43 +19,58 @@ function PaymentContent() {
   const [loading, setLoading] = useState(true)
   const [paying, setPaying] = useState(false)
   const [timeLeft, setTimeLeft] = useState(0)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const [expiredLocally, setExpiredLocally] = useState(false)
+
+  const refreshOrder = useCallback(async () => {
+    if (!orderNo) return null
+    const res = await api.getOrderDetail({ orderNo })
+    const data = res.data || res
+    setOrder(data)
+    if (data.expireTime) {
+      const expire = new Date(data.expireTime).getTime()
+      const diff = Math.max(0, Math.floor((expire - Date.now()) / 1000))
+      setTimeLeft(diff)
+      setExpiredLocally(data.status === 0 && diff <= 0)
+    } else {
+      setTimeLeft(0)
+      setExpiredLocally(false)
+    }
+    return data
+  }, [orderNo])
 
   // 加载订单详情 + 刷新积分
   useEffect(() => {
     if (!orderNo) return
     fetchPoints()
-    api.getOrderDetail({ orderNo })
+    refreshOrder()
       .then((res) => {
-        const data = res.data || res
-        setOrder(data)
-        if (data.expireTime) {
-          const expire = new Date(data.expireTime).getTime()
-          const now = Date.now()
-          const diff = Math.max(0, Math.floor((expire - now) / 1000))
-          setTimeLeft(diff)
-        }
+        if (!res) toast.error('加载订单失败')
       })
       .catch(() => toast.error('加载订单失败'))
       .finally(() => setLoading(false))
-  }, [orderNo])
+  }, [orderNo, fetchPoints, refreshOrder])
 
   // 倒计时
   useEffect(() => {
-    if (timeLeft <= 0) return
-    timerRef.current = setInterval(() => {
+    if (!order || order.status !== 0) return
+    if (timeLeft <= 0) {
+      if (order.expireTime && !expiredLocally) {
+        setExpiredLocally(true)
+        toast.error('订单已超时，请重新选座')
+        refreshOrder().catch(() => {})
+      }
+      return
+    }
+    const timer = setTimeout(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          clearInterval(timerRef.current!)
-          toast.error('订单已超时，请重新选座')
-          router.push('/')
           return 0
         }
         return prev - 1
       })
     }, 1000)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [timeLeft > 0])
+    return () => clearTimeout(timer)
+  }, [order, timeLeft, expiredLocally, refreshOrder])
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60)
@@ -65,10 +80,18 @@ function PaymentContent() {
 
   const pointsCost = order ? Math.ceil(Number(order.totalPrice)) : 0
   const hasEnoughPoints = points >= pointsCost
+  const isPending = order?.status === 0
+  const canPay = Boolean(order && isPending && !expiredLocally && (!order.expireTime || timeLeft > 0))
+  const displayStatus = expiredLocally && isPending ? '已过期' : order?.statusDesc
 
   // 积分支付
   const handlePay = async () => {
     if (!orderNo || paying) return
+    if (!canPay) {
+      toast.error('订单已过期，无法支付')
+      refreshOrder().catch(() => {})
+      return
+    }
     if (!hasEnoughPoints) {
       toast.error(`积分不足，需要${pointsCost}积分，当前${points}积分`)
       return
@@ -87,10 +110,16 @@ function PaymentContent() {
         router.push(`/order-success?orderNo=${orderNo}`)
       } else {
         toast.error(res.message || '支付失败')
+        if (res.code === 409 || res.code === 463 || (res.message || '').includes('过期') || (res.message || '').includes('取消')) {
+          await refreshOrder()
+        }
       }
     } catch (e: any) {
       const msg = e?.response?.data?.message || '支付失败，请重试'
       toast.error(msg)
+      if (msg.includes('过期') || msg.includes('取消')) {
+        await refreshOrder()
+      }
     } finally {
       setPaying(false)
     }
@@ -98,8 +127,6 @@ function PaymentContent() {
 
   if (loading) return <Loading />
   if (!order) return <div className="text-center py-20 text-gray-400">订单不存在</div>
-
-  const isPending = order.status === 0
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -123,7 +150,7 @@ function PaymentContent() {
       </div>
 
       <div className="max-w-[800px] mx-auto mt-8">
-        {isPending && timeLeft > 0 && (
+        {canPay && timeLeft > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 flex items-center justify-between">
             <span className="text-amber-700">请在规定时间内完成支付，超时订单将自动取消</span>
             <span className="text-2xl font-bold text-primary">{formatTime(timeLeft)}</span>
@@ -160,7 +187,7 @@ function PaymentContent() {
         </div>
 
         {/* 积分信息 & 支付 */}
-        {isPending && (
+        {canPay && (
           <>
             <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
               <h2 className="text-lg font-medium text-gray-800 mb-4">积分支付</h2>
@@ -193,9 +220,9 @@ function PaymentContent() {
 
             <button
               onClick={handlePay}
-              disabled={paying || !hasEnoughPoints}
+              disabled={paying || !hasEnoughPoints || !canPay}
               className={`w-full py-4 rounded-full text-white font-medium text-lg transition-colors ${
-                paying || !hasEnoughPoints ? 'bg-gray-300 cursor-not-allowed' : 'bg-primary hover:bg-red-600'
+                paying || !hasEnoughPoints || !canPay ? 'bg-gray-300 cursor-not-allowed' : 'bg-primary hover:bg-red-600'
               }`}
             >
               {paying ? '支付处理中...' : `积分支付 ${pointsCost} 积分`}
@@ -203,10 +230,10 @@ function PaymentContent() {
           </>
         )}
 
-        {!isPending && (
+        {!canPay && (
           <div className="bg-white rounded-lg shadow-sm p-8 text-center">
             <div className="text-lg text-gray-600">
-              订单状态：<span className="font-medium text-primary">{order.statusDesc}</span>
+              订单状态：<span className="font-medium text-primary">{displayStatus}</span>
             </div>
             <button onClick={() => router.push('/')} className="mt-4 px-6 py-2 bg-primary text-white rounded-full">返回首页</button>
           </div>

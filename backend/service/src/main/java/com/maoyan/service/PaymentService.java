@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.maoyan.common.constants.MQConstants;
 import com.maoyan.dao.mapper.OrderMapper;
 import com.maoyan.dao.mapper.OrderSeatMapper;
-import com.maoyan.dao.mapper.ScheduleMapper;
 import com.maoyan.dao.mapper.SeatLockMapper;
 import com.maoyan.dao.mapper.UserMapper;
 import com.maoyan.domain.enums.OrderStatusEnum;
@@ -17,7 +16,6 @@ import com.maoyan.domain.model.po.SeatLockPO;
 import com.maoyan.domain.model.po.UserPO;
 import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
-import com.maoyan.service.infrastructure.StockService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
@@ -38,10 +36,9 @@ public class PaymentService {
     private final OrderMapper orderMapper;
     private final SeatLockMapper seatLockMapper;
     private final OrderSeatMapper orderSeatMapper;
-    private final ScheduleMapper scheduleMapper;
     private final UserMapper userMapper;
-    private final StockService stockService;
     private final DistributedLockService lockService;
+    private final OrderClosureService orderClosureService;
 
     @Autowired(required = false)
     private RocketMQTemplate rocketMQTemplate;
@@ -64,12 +61,21 @@ public class PaymentService {
             throw new BizException(ResponseCodeEnum.NOT_FOUND.getCode(), "订单不存在");
         }
         if (order.getStatus() != OrderStatusEnum.PENDING.getCode()) {
-            throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "订单状态不允许支付");
+            throw nonPayableStatusException(order.getStatus());
         }
 
         LocalDateTime now = LocalDateTime.now();
         if (order.getExpireTime() != null && now.isAfter(order.getExpireTime())) {
-            closeExpiredOrder(order, now);
+            OrderClosureService.CloseResult closeResult =
+                    orderClosureService.closeExpiredOrder(orderNo, "PAYMENT_LAZY_EXPIRE");
+            log.info("[Payment] Expired payment rejected: orderNo={}, closeSource=PAYMENT_LAZY_EXPIRE, closed={}, statusAfter={}",
+                    orderNo, closeResult.isClosed(), closeResult.getCurrentStatus());
+            if (closeResult.isClosed() || closeResult.isCancelled()) {
+                throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "订单已过期并自动取消，无法支付");
+            }
+            if (closeResult.isPaid()) {
+                throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "订单已支付，不能重复支付");
+            }
             throw new BizException(ResponseCodeEnum.SEAT_LOCK_EXPIRED);
         }
 
@@ -118,6 +124,16 @@ public class PaymentService {
         return vo;
     }
 
+    private BizException nonPayableStatusException(Integer status) {
+        if (status != null && status == OrderStatusEnum.CANCELLED.getCode()) {
+            return new BizException(ResponseCodeEnum.CONFLICT.getCode(), "订单已取消，无法支付");
+        }
+        if (status != null && status == OrderStatusEnum.PAID.getCode()) {
+            return new BizException(ResponseCodeEnum.CONFLICT.getCode(), "订单已支付，不能重复支付");
+        }
+        return new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "订单状态不允许支付");
+    }
+
     public OrderVO getOrderDetail(Long userId, String orderNo) {
         OrderPO order = selectUserOrder(userId, orderNo);
         if (order == null) {
@@ -133,18 +149,6 @@ public class PaymentService {
         return orderMapper.selectOne(wrapper);
     }
 
-    private void closeExpiredOrder(OrderPO order, LocalDateTime now) {
-        int closed = orderMapper.closePendingOrder(order.getOrderNo(), now);
-        if (closed == 0) {
-            return;
-        }
-        scheduleMapper.rollbackStock(order.getScheduleId(), order.getSeatCount());
-        stockService.rollback(order.getScheduleId(), order.getSeatCount());
-        refreshScheduleDetailCache(order.getScheduleId());
-        seatLockMapper.releaseOrderLocks(order.getOrderNo());
-        log.info("[Payment] Expired order closed: orderNo={}", order.getOrderNo());
-    }
-
     private void sendPaidEvent(OrderPO order) {
         if (rocketMQTemplate == null) {
             return;
@@ -158,17 +162,6 @@ public class PaymentService {
             rocketMQTemplate.syncSend(MQConstants.ORDER_TOPIC + ":" + MQConstants.TAG_ORDER_PAID, event, 1000);
         } catch (Exception e) {
             log.error("[Payment] MQ notify failed", e);
-        }
-    }
-
-    private void refreshScheduleDetailCache(Long scheduleId) {
-        try {
-            var schedule = scheduleMapper.selectById(scheduleId);
-            if (schedule != null) {
-                stockService.initScheduleDetail(schedule);
-            }
-        } catch (Exception e) {
-            log.warn("[Payment] Failed to refresh schedule cache: scheduleId={}", scheduleId, e);
         }
     }
 
