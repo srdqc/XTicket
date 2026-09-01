@@ -20,10 +20,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.RoundingMode;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -100,17 +102,7 @@ public class PaymentService {
             throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "订单状态已变化，请刷新后重试");
         }
 
-        for (SeatLockPO lock : locks) {
-            OrderSeatPO seat = new OrderSeatPO();
-            seat.setOrderId(order.getId());
-            seat.setOrderNo(orderNo);
-            seat.setScheduleId(order.getScheduleId());
-            seat.setRowNum(lock.getRowNum());
-            seat.setColNum(lock.getColNum());
-            seat.setSeatLabel(lock.getRowNum() + "排" + lock.getColNum() + "座");
-            seat.setCreateTime(now);
-            orderSeatMapper.insert(seat);
-        }
+        confirmOrderSeats(order, locks, now);
         seatLockMapper.markAsPurchased(orderNo, now);
 
         order.setStatus(OrderStatusEnum.PAID.getCode());
@@ -122,6 +114,41 @@ public class PaymentService {
         UserPO updatedUser = userMapper.selectById(userId);
         vo.setRemainingPoints(updatedUser != null ? updatedUser.getPoints() : 0);
         return vo;
+    }
+
+    private void confirmOrderSeats(OrderPO order, List<SeatLockPO> locks, LocalDateTime now) {
+        try {
+            for (SeatLockPO lock : locks) {
+                OrderSeatPO seat = new OrderSeatPO();
+                seat.setOrderId(order.getId());
+                seat.setOrderNo(order.getOrderNo());
+                seat.setScheduleId(order.getScheduleId());
+                seat.setRowNum(lock.getRowNum());
+                seat.setColNum(lock.getColNum());
+                seat.setSeatLabel(lock.getRowNum() + "排" + lock.getColNum() + "座");
+                seat.setCreateTime(now);
+                orderSeatMapper.insert(seat);
+            }
+        } catch (DuplicateKeyException e) {
+            SQLException sqlException = findSqlException(e);
+            log.warn("[Payment] Seat confirmation conflict: orderNo={}, scheduleId={}, conflictType=ORDER_SEAT_UNIQUE, springException={}, sqlErrorCode={}, sqlState={}, seatCount={}",
+                    order.getOrderNo(), order.getScheduleId(), e.getClass().getSimpleName(),
+                    sqlException != null ? sqlException.getErrorCode() : null,
+                    sqlException != null ? sqlException.getSQLState() : null,
+                    locks.size());
+            throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "所选座位已被其他订单确认，支付失败，请重新选座");
+        }
+    }
+
+    private SQLException findSqlException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof SQLException sqlException) {
+                return sqlException;
+            }
+            current = current.getCause();
+        }
+        return null;
     }
 
     private BizException nonPayableStatusException(Integer status) {
