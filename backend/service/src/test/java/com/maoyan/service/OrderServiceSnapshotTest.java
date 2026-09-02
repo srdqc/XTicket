@@ -2,7 +2,7 @@ package com.maoyan.service;
 
 import com.maoyan.dao.mapper.OrderMapper;
 import com.maoyan.dao.mapper.OrderSeatMapper;
-import com.maoyan.dao.mapper.ScheduleMapper;
+import com.maoyan.dao.mapper.ActivitySessionMapper;
 import com.maoyan.dao.mapper.SeatLockMapper;
 import com.maoyan.domain.enums.ResponseCodeEnum;
 import com.maoyan.domain.exception.BizException;
@@ -10,7 +10,7 @@ import com.maoyan.domain.model.dto.CreateOrderDTO;
 import com.maoyan.domain.model.dto.LockSeatsDTO;
 import com.maoyan.domain.model.dto.OrderSnapshotSourceDTO;
 import com.maoyan.domain.model.po.OrderPO;
-import com.maoyan.domain.model.po.SchedulePO;
+import com.maoyan.domain.model.po.ActivitySessionPO;
 import com.maoyan.domain.model.po.SeatLockPO;
 import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
@@ -46,7 +46,7 @@ class OrderServiceSnapshotTest {
     @Mock
     private OrderMapper orderMapper;
     @Mock
-    private ScheduleMapper scheduleMapper;
+    private ActivitySessionMapper activitySessionMapper;
     @Mock
     private SeatLockMapper seatLockMapper;
     @Mock
@@ -64,7 +64,7 @@ class OrderServiceSnapshotTest {
 
     @BeforeEach
     void setUp() {
-        orderService = new OrderService(orderMapper, scheduleMapper, seatLockMapper, orderSeatMapper,
+        orderService = new OrderService(orderMapper, activitySessionMapper, seatLockMapper, orderSeatMapper,
                 stockService, lockService, transactionManager, orderClosureService);
         when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         when(lockService.<OrderVO>executeWithBoundedLock(anyString(), anyLong(), anyLong(), any()))
@@ -78,13 +78,13 @@ class OrderServiceSnapshotTest {
     @Test
     void createOrderWritesTrustedSnapshotAndServerSeatInfo() {
         CreateOrderDTO dto = orderRequest("lock-token-1", List.of(seat(2, 3), seat(1, 4)), "client text");
-        when(scheduleMapper.selectById(40L)).thenReturn(activeSchedule());
+        when(activitySessionMapper.selectById(40L)).thenReturn(activeSchedule());
         when(orderMapper.selectByLockToken("lock-token-1")).thenReturn(null);
         when(seatLockMapper.selectActiveLocksByTokenOnly(eq("lock-token-1"), any()))
                 .thenReturn(List.of(lock(2, 3), lock(1, 4)));
-        when(scheduleMapper.selectOrderSnapshotSource(40L)).thenReturn(snapshot());
+        when(activitySessionMapper.selectOrderSnapshotSource(40L)).thenReturn(snapshot());
         when(stockService.preDeduct(40L, 2)).thenReturn(218L);
-        when(scheduleMapper.deductStock(40L, 2, 7)).thenReturn(1);
+        when(activitySessionMapper.deductStock(40L, 2, 7)).thenReturn(1);
         when(orderMapper.insert(any(OrderPO.class))).thenReturn(1);
         when(seatLockMapper.bindLocksToOrder(eq(40L), eq(1001L), eq("lock-token-1"),
                 anyString(), any(LocalDateTime.class), any(LocalDateTime.class))).thenReturn(2);
@@ -105,7 +105,7 @@ class OrderServiceSnapshotTest {
 
         assertThat(result.getMovieName()).isEqualTo("Snapshot Movie");
         assertThat(result.getSeatsInfo()).isEqualTo("1排4座,2排3座");
-        verify(scheduleMapper).deductStock(40L, 2, 7);
+        verify(activitySessionMapper).deductStock(40L, 2, 7);
     }
 
     @Test
@@ -113,11 +113,11 @@ class OrderServiceSnapshotTest {
         CreateOrderDTO dto = orderRequest("lock-token-2", List.of(seat(1, 1)), "client text");
         OrderSnapshotSourceDTO incomplete = snapshot();
         incomplete.setMovieName(null);
-        when(scheduleMapper.selectById(40L)).thenReturn(activeSchedule());
+        when(activitySessionMapper.selectById(40L)).thenReturn(activeSchedule());
         when(orderMapper.selectByLockToken("lock-token-2")).thenReturn(null);
         when(seatLockMapper.selectActiveLocksByTokenOnly(eq("lock-token-2"), any()))
                 .thenReturn(List.of(lock(1, 1)));
-        when(scheduleMapper.selectOrderSnapshotSource(40L)).thenReturn(incomplete);
+        when(activitySessionMapper.selectOrderSnapshotSource(40L)).thenReturn(incomplete);
 
         assertThatThrownBy(() -> orderService.createOrder(1001L, dto))
                 .isInstanceOf(BizException.class)
@@ -125,7 +125,7 @@ class OrderServiceSnapshotTest {
                 .isEqualTo(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode());
 
         verify(stockService, never()).preDeduct(anyLong(), anyInt());
-        verify(scheduleMapper, never()).deductStock(anyLong(), anyInt(), anyInt());
+        verify(activitySessionMapper, never()).deductStock(anyLong(), anyInt(), anyInt());
         verify(orderMapper, never()).insert(any(OrderPO.class));
     }
 
@@ -146,7 +146,7 @@ class OrderServiceSnapshotTest {
         existing.setUnitPrice(new BigDecimal("50.00"));
         existing.setTotalPrice(new BigDecimal("50.00"));
         existing.setStatus(0);
-        when(scheduleMapper.selectById(40L)).thenReturn(activeSchedule());
+        when(activitySessionMapper.selectById(40L)).thenReturn(activeSchedule());
         when(orderMapper.selectByLockToken("lock-token-3")).thenReturn(existing);
         when(seatLockMapper.selectLocksByToken("lock-token-3")).thenReturn(List.of(lock(3, 5)));
 
@@ -155,7 +155,7 @@ class OrderServiceSnapshotTest {
         assertThat(result.getOrderNo()).isEqualTo("MO202609020001");
         assertThat(result.getMovieName()).isEqualTo("Original Movie");
         assertThat(result.getSeatsInfo()).isEqualTo("3排5座");
-        verify(scheduleMapper, never()).selectOrderSnapshotSource(anyLong());
+        verify(activitySessionMapper, never()).selectOrderSnapshotSource(anyLong());
         verify(stockService, never()).preDeduct(anyLong(), anyInt());
         verify(orderMapper, never()).insert(any(OrderPO.class));
     }
@@ -189,8 +189,8 @@ class OrderServiceSnapshotTest {
         return lock;
     }
 
-    private static SchedulePO activeSchedule() {
-        SchedulePO schedule = new SchedulePO();
+    private static ActivitySessionPO activeSchedule() {
+        ActivitySessionPO schedule = new ActivitySessionPO();
         schedule.setId(40L);
         schedule.setDeleted(0);
         schedule.setStatus(1);

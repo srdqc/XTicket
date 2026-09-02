@@ -1,7 +1,7 @@
 package com.maoyan.biz;
 
 import com.maoyan.domain.model.dto.CreateOrderDTO;
-import com.maoyan.domain.model.po.SchedulePO;
+import com.maoyan.domain.model.po.ActivitySessionPO;
 import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.MovieService;
 import com.maoyan.service.OrderService;
@@ -25,9 +25,9 @@ public class OrderBiz {
         OrderVO orderVO = orderService.createOrder(userId, dto);
 
         try {
-            SchedulePO schedule = scheduleService.getById(dto.getScheduleId());
+            ActivitySessionPO schedule = scheduleService.getById(dto.getScheduleId());
             if (schedule != null) {
-                var movieDetail = movieService.getMovieDetail(schedule.getMovieId());
+                var movieDetail = movieService.getMovieDetail(schedule.getActivityId());
                 if (movieDetail != null) {
                     orderVO.setMovieName(movieDetail.getNm());
                     orderVO.setMovieImg(movieDetail.getImg());

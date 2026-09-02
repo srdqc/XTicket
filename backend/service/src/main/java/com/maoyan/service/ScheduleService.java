@@ -1,9 +1,9 @@
 package com.maoyan.service;
 
-import com.maoyan.dao.mapper.CinemaMapper;
-import com.maoyan.dao.mapper.ScheduleMapper;
-import com.maoyan.domain.model.po.CinemaPO;
-import com.maoyan.domain.model.po.SchedulePO;
+import com.maoyan.dao.mapper.ActivitySessionMapper;
+import com.maoyan.dao.mapper.VenueMapper;
+import com.maoyan.domain.model.po.ActivitySessionPO;
+import com.maoyan.domain.model.po.VenuePO;
 import com.maoyan.domain.model.vo.ScheduleVO;
 import com.maoyan.service.cache.MultiLevelCacheService;
 import com.maoyan.service.infrastructure.StockService;
@@ -27,12 +27,12 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ScheduleService {
 
-    private final ScheduleMapper scheduleMapper;
+    private final ActivitySessionMapper activitySessionMapper;
     private final StockService stockService;
     private final MultiLevelCacheService cacheService;
 
     @Resource
-    private CinemaMapper cinemaMapper;
+    private VenueMapper venueMapper;
 
     private static final String SCHEDULE_LIST_CACHE_PREFIX = "schedule:list:";
     private static final String SCHEDULE_DATES_CACHE_PREFIX = "schedule:dates:";
@@ -55,13 +55,13 @@ public class ScheduleService {
      *       同时重置库存和版本号，保证数据始终新鲜。
      */
     private void refreshScheduleDates() {
-        String minDateStr = scheduleMapper.selectMinShowDate();
+        String minDateStr = activitySessionMapper.selectMinShowDate();
         if (minDateStr != null) {
             LocalDate minDate = LocalDate.parse(minDateStr);
             LocalDate today = LocalDate.now();
             long daysDiff = ChronoUnit.DAYS.between(minDate, today);
             if (daysDiff > 0) {
-                int rows = scheduleMapper.refreshAllScheduleDates(daysDiff);
+                int rows = activitySessionMapper.refreshAllScheduleDates(daysDiff);
                 log.info("[Schedule] 排片日期刷新：前移 {} 天（{} → {}），共更新 {} 条记录", daysDiff, minDate, today, rows);
             }
         }
@@ -83,7 +83,7 @@ public class ScheduleService {
             int lostRollback = Integer.parseInt(entry.getValue().toString());
             try {
                 // 从 DB 查真实库存，强覆盖 Redis
-                SchedulePO db = scheduleMapper.selectById(scheduleId);
+                ActivitySessionPO db = activitySessionMapper.selectById(scheduleId);
                 if (db != null) {
                     stockService.initStock(scheduleId, db.getAvailableSeats());
                     stockService.initScheduleDetail(db);
@@ -116,15 +116,15 @@ public class ScheduleService {
      */
     public void warmUpStock() {
         String today = LocalDate.now().toString();
-        List<SchedulePO> schedules = scheduleMapper.selectByMovieAndDate(null, today);
+        List<ActivitySessionPO> schedules = activitySessionMapper.selectByMovieAndDate(null, today);
         // selectByMovieAndDate 需要 movieId，这里用全量查询
-        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SchedulePO> wrapper =
+        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ActivitySessionPO> wrapper =
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
-        wrapper.eq(SchedulePO::getStatus, 1)
-                .eq(SchedulePO::getDeleted, 0);
-        schedules = scheduleMapper.selectList(wrapper);
+        wrapper.eq(ActivitySessionPO::getStatus, 1)
+                .eq(ActivitySessionPO::getDeleted, 0);
+        schedules = activitySessionMapper.selectList(wrapper);
 
-        for (SchedulePO s : schedules) {
+        for (ActivitySessionPO s : schedules) {
             stockService.initStock(s.getId(), s.getAvailableSeats());
             stockService.initScheduleDetail(s);
         }
@@ -138,15 +138,15 @@ public class ScheduleService {
         if (showDate == null || showDate.isEmpty()) {
             showDate = LocalDate.now().toString();
         }
-        List<SchedulePO> pos = getCachedSchedules(movieId, showDate);
+        List<ActivitySessionPO> pos = getCachedSchedules(movieId, showDate);
         return pos.stream().map(this::toVO).toList();
     }
 
     /**
      * 根据ID获取场次
      */
-    public SchedulePO getById(Long scheduleId) {
-        return scheduleMapper.selectById(scheduleId);
+    public ActivitySessionPO getById(Long scheduleId) {
+        return activitySessionMapper.selectById(scheduleId);
     }
 
     /**
@@ -159,16 +159,16 @@ public class ScheduleService {
             showDate = LocalDate.now().toString();
         }
 
-        List<SchedulePO> allSchedules = getCachedSchedules(movieId, showDate);
+        List<ActivitySessionPO> allSchedules = getCachedSchedules(movieId, showDate);
 
         // 按影院分组
-        Map<Long, List<SchedulePO>> grouped = allSchedules.stream()
-                .collect(Collectors.groupingBy(SchedulePO::getCinemaId, LinkedHashMap::new, Collectors.toList()));
+        Map<Long, List<ActivitySessionPO>> grouped = allSchedules.stream()
+                .collect(Collectors.groupingBy(ActivitySessionPO::getVenueId, LinkedHashMap::new, Collectors.toList()));
 
         List<Map<String, Object>> result = new ArrayList<>();
-        for (Map.Entry<Long, List<SchedulePO>> entry : grouped.entrySet()) {
+        for (Map.Entry<Long, List<ActivitySessionPO>> entry : grouped.entrySet()) {
             Long cinemaId = entry.getKey();
-            CinemaPO cinema = cinemaMapper.selectById(cinemaId);
+            VenuePO cinema = venueMapper.selectById(cinemaId);
 
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("cinemaId", cinemaId);
@@ -191,7 +191,7 @@ public class ScheduleService {
             LocalDate today = LocalDate.now();
             for (int i = 0; i < 7; i++) {
                 String date = today.plusDays(i).toString();
-                List<SchedulePO> schedules = getCachedSchedules(movieId, date);
+                List<ActivitySessionPO> schedules = getCachedSchedules(movieId, date);
                 if (!schedules.isEmpty()) {
                     dates.add(date);
                 }
@@ -200,11 +200,11 @@ public class ScheduleService {
         });
     }
 
-    private ScheduleVO toVO(SchedulePO po) {
+    private ScheduleVO toVO(ActivitySessionPO po) {
         ScheduleVO vo = new ScheduleVO();
         vo.setId(po.getId());
-        vo.setMovieId(po.getMovieId());
-        vo.setCinemaId(po.getCinemaId());
+        vo.setMovieId(po.getActivityId());
+        vo.setCinemaId(po.getVenueId());
         vo.setHallName(po.getHallName());
         vo.setShowDate(po.getShowDate());
         vo.setShowTime(po.getShowTime());
@@ -223,15 +223,15 @@ public class ScheduleService {
     /**
      * 获取影院详情
      */
-    public CinemaPO getCinemaById(Long cinemaId) {
-        return cinemaMapper.selectById(cinemaId);
+    public VenuePO getCinemaById(Long cinemaId) {
+        return venueMapper.selectById(cinemaId);
     }
 
     /**
      * 查询某影院有排片的电影ID列表
      */
     public List<Long> getMovieIdsByCinema(Long cinemaId) {
-        return scheduleMapper.selectMovieIdsByCinema(cinemaId, LocalDate.now().toString());
+        return activitySessionMapper.selectMovieIdsByCinema(cinemaId, LocalDate.now().toString());
     }
 
     /**
@@ -243,8 +243,8 @@ public class ScheduleService {
         }
         String finalShowDate = showDate;
         String cacheKey = CINEMA_SCHEDULE_LIST_CACHE_PREFIX + cinemaId + ":" + movieId + ":" + finalShowDate;
-        return cacheService.<List<SchedulePO>>get(cacheKey,
-                        () -> scheduleMapper.selectByCinemaAndMovieAndDate(cinemaId, movieId, finalShowDate))
+        return cacheService.<List<ActivitySessionPO>>get(cacheKey,
+                        () -> activitySessionMapper.selectByCinemaAndMovieAndDate(cinemaId, movieId, finalShowDate))
                 .stream().map(this::toVO).toList();
     }
 
@@ -254,12 +254,12 @@ public class ScheduleService {
     public List<String> getCinemaAvailableDates(Long cinemaId, Long movieId) {
         String cacheKey = CINEMA_SCHEDULE_DATES_CACHE_PREFIX + cinemaId + ":" + movieId;
         return cacheService.get(cacheKey,
-                () -> scheduleMapper.selectAvailableDatesByCinemaAndMovie(cinemaId, movieId, LocalDate.now().toString()));
+                () -> activitySessionMapper.selectAvailableDatesByCinemaAndMovie(cinemaId, movieId, LocalDate.now().toString()));
     }
 
-    private List<SchedulePO> getCachedSchedules(Long movieId, String showDate) {
+    private List<ActivitySessionPO> getCachedSchedules(Long movieId, String showDate) {
         String cacheKey = SCHEDULE_LIST_CACHE_PREFIX + movieId + ":" + showDate;
-        return cacheService.get(cacheKey, () -> scheduleMapper.selectByMovieAndDate(movieId, showDate));
+        return cacheService.get(cacheKey, () -> activitySessionMapper.selectByMovieAndDate(movieId, showDate));
     }
 
     private void evictScheduleReadCaches() {

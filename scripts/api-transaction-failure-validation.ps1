@@ -71,11 +71,11 @@ function Invoke-DbRows {
     param([string]$Sql)
     $lines = @(Invoke-DbLines $Sql)
     if ($lines.Count -eq 0) { return @() }
-    $headers = $lines[0] -split "`t", -1
+    $headers = $lines[0] -split "`t"
     $rows = @()
     for ($i = 1; $i -lt $lines.Count; $i++) {
         if ([string]::IsNullOrWhiteSpace($lines[$i])) { continue }
-        $values = $lines[$i] -split "`t", -1
+        $values = $lines[$i] -split "`t"
         $obj = [ordered]@{}
         for ($j = 0; $j -lt $headers.Count; $j++) {
             $value = if ($j -lt $values.Count) { $values[$j] } else { $null }
@@ -90,7 +90,7 @@ function Invoke-DbScalar {
     param([string]$Sql)
     $lines = @(Invoke-DbLines $Sql -NoHeader)
     if ($lines.Count -eq 0) { return $null }
-    return Convert-DbValue (($lines[0] -split "`t", -1)[0])
+    return Convert-DbValue (($lines[0] -split "`t")[0])
 }
 
 function Invoke-DbExec {
@@ -219,7 +219,7 @@ function Select-Schedule {
     param([int]$MinStock = 10)
     $sql = @"
 SELECT ms.id, ms.total_seats, ms.available_seats, ms.version, ms.price, COUNT(sl.id) AS lock_rows
-FROM movie_schedule ms
+FROM activity_session ms
 LEFT JOIN seat_lock sl ON sl.schedule_id = ms.id
 WHERE ms.status = 1 AND ms.deleted = 0 AND ms.available_seats >= $MinStock
   AND TIMESTAMP(ms.show_date, STR_TO_DATE(ms.show_time, '%H:%i')) > NOW()
@@ -229,7 +229,7 @@ LIMIT 1
 "@
     $rows = @(Invoke-DbRows $sql)
     if ($rows.Count -eq 0) {
-        $rows = @(Invoke-DbRows "SELECT id, total_seats, available_seats, version, price, 0 AS lock_rows FROM movie_schedule WHERE status = 1 AND deleted = 0 AND available_seats >= $MinStock ORDER BY available_seats DESC, id LIMIT 1")
+        $rows = @(Invoke-DbRows "SELECT id, total_seats, available_seats, version, price, 0 AS lock_rows FROM activity_session WHERE status = 1 AND deleted = 0 AND available_seats >= $MinStock ORDER BY available_seats DESC, id LIMIT 1")
     }
     if ($rows.Count -eq 0) { throw "No salable schedule found" }
     $TouchedSchedules.Add([long]$rows[0].id) | Out-Null
@@ -238,7 +238,7 @@ LIMIT 1
 
 function Get-Schedule {
     param([long]$ScheduleId)
-    $rows = @(Invoke-DbRows "SELECT id, total_seats, available_seats, version, price FROM movie_schedule WHERE id = $ScheduleId")
+    $rows = @(Invoke-DbRows "SELECT id, total_seats, available_seats, version, price FROM activity_session WHERE id = $ScheduleId")
     if ($rows.Count -eq 0) { return $null }
     return $rows[0]
 }
@@ -430,12 +430,12 @@ function Add-Finding {
 function Restore-Schedule {
     param($Snapshot)
     if ($null -eq $Snapshot) { return }
-    Invoke-DbExec "UPDATE movie_schedule SET available_seats = $($Snapshot.available_seats), version = $($Snapshot.version), update_time = CURRENT_TIMESTAMP WHERE id = $($Snapshot.id)"
+    Invoke-DbExec "UPDATE activity_session SET available_seats = $($Snapshot.available_seats), version = $($Snapshot.version), update_time = CURRENT_TIMESTAMP WHERE id = $($Snapshot.id)"
     Set-RedisStock ([long]$Snapshot.id) ([int]$Snapshot.available_seats)
 }
 
 function Reset-StockCacheFromDb {
-    $rows = @(Invoke-DbRows "SELECT id, available_seats FROM movie_schedule WHERE deleted = 0")
+    $rows = @(Invoke-DbRows "SELECT id, available_seats FROM activity_session WHERE deleted = 0")
     foreach ($row in $rows) {
         Set-RedisStock ([long]$row.id) ([int]$row.available_seats)
     }
@@ -451,14 +451,14 @@ CREATE TEMPORARY TABLE cleanup_orders AS SELECT order_no FROM ticket_order WHERE
 DELETE os FROM order_seat os JOIN cleanup_orders co ON os.order_no = co.order_no;
 DELETE sl FROM seat_lock sl LEFT JOIN cleanup_orders co ON sl.order_no = co.order_no WHERE sl.user_id IN (SELECT id FROM cleanup_users) OR co.order_no IS NOT NULL;
 DELETE o FROM ticket_order o JOIN cleanup_users cu ON o.user_id = cu.id;
-DELETE uw FROM user_wish uw JOIN cleanup_users cu ON uw.user_id = cu.id;
+DELETE uw FROM activity_follow uw JOIN cleanup_users cu ON uw.user_id = cu.id;
 DELETE u FROM sys_user u JOIN cleanup_users cu ON u.id = cu.id;
 DROP TEMPORARY TABLE cleanup_orders;
 DROP TEMPORARY TABLE cleanup_users;
 "@
         Invoke-DbExec $sql
     }
-    Invoke-DbExec "UPDATE movie_schedule ms SET available_seats = total_seats - (SELECT COUNT(*) FROM order_seat os JOIN ticket_order o ON o.order_no = os.order_no WHERE o.schedule_id = ms.id AND o.status = 1 AND o.deleted = 0), version = version + 1 WHERE deleted = 0"
+    Invoke-DbExec "UPDATE activity_session ms SET available_seats = total_seats - (SELECT COUNT(*) FROM order_seat os JOIN ticket_order o ON o.order_no = os.order_no WHERE o.schedule_id = ms.id AND o.status = 1 AND o.deleted = 0), version = version + 1 WHERE deleted = 0"
     Reset-StockCacheFromDb
 }
 
@@ -602,7 +602,7 @@ try {
         $seats = @(Get-FreeSeats $scheduleId $usedSeats 2)
         $lock = Lock-Seats $userA $scheduleId $seats
         $lockToken = [string]$lock.data.lockToken
-        Invoke-DbExec "UPDATE movie_schedule SET available_seats = 1, version = version + 1, update_time = CURRENT_TIMESTAMP WHERE id = $scheduleId"
+        Invoke-DbExec "UPDATE activity_session SET available_seats = 1, version = version + 1, update_time = CURRENT_TIMESTAMP WHERE id = $scheduleId"
         Set-RedisStock $scheduleId 2
         $create = Create-Order $userA $scheduleId $seats $lockToken
         $orderCount = [int](Invoke-DbScalar "SELECT COUNT(*) FROM ticket_order WHERE lock_token = '$(Escape-Sql $lockToken)'")
@@ -647,7 +647,7 @@ try {
             $requests += [pscustomobject]@{ label = "create-$idx"; path = "/api/order/create"; headers = $createUsers[$idx].headers; body = $body }
             $orderBodies += $body
         }
-        Invoke-DbExec "UPDATE movie_schedule SET available_seats = 1, version = version + 1, update_time = CURRENT_TIMESTAMP WHERE id = $scheduleId"
+        Invoke-DbExec "UPDATE activity_session SET available_seats = 1, version = version + 1, update_time = CURRENT_TIMESTAMP WHERE id = $scheduleId"
         Set-RedisStock $scheduleId 1
         $responses = @(Invoke-ConcurrentPost $requests)
         $dbAfter = Get-Schedule $scheduleId

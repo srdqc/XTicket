@@ -3,11 +3,11 @@ package com.maoyan.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.maoyan.common.constants.CacheConstants;
 import com.maoyan.common.constants.MQConstants;
-import com.maoyan.dao.mapper.MovieMapper;
-import com.maoyan.dao.mapper.UserWishMapper;
+import com.maoyan.dao.mapper.ActivityFollowMapper;
+import com.maoyan.dao.mapper.ActivityMapper;
 import com.maoyan.domain.model.event.WishEvent;
-import com.maoyan.domain.model.po.MoviePO;
-import com.maoyan.domain.model.po.UserWishPO;
+import com.maoyan.domain.model.po.ActivityFollowPO;
+import com.maoyan.domain.model.po.ActivityPO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
@@ -46,8 +46,8 @@ public class WishService {
     @Autowired(required = false)
     private RocketMQTemplate rocketMQTemplate;
 
-    private final UserWishMapper userWishMapper;
-    private final MovieMapper movieMapper;
+    private final ActivityFollowMapper activityFollowMapper;
+    private final ActivityMapper activityMapper;
 
     /**
      * 用户点击"想看"（核心方法）
@@ -82,9 +82,9 @@ public class WishService {
         }
 
         // 降级模式：无 Redis，直接 DB 操作
-        LambdaQueryWrapper<UserWishPO> check = new LambdaQueryWrapper<>();
-        check.eq(UserWishPO::getUserId, userId).eq(UserWishPO::getMovieId, movieId);
-        if (userWishMapper.selectCount(check) > 0) {
+        LambdaQueryWrapper<ActivityFollowPO> check = new LambdaQueryWrapper<>();
+        check.eq(ActivityFollowPO::getUserId, userId).eq(ActivityFollowPO::getActivityId, movieId);
+        if (activityFollowMapper.selectCount(check) > 0) {
             log.info("[Wish] User {} already wished movie {} (DB check)", userId, movieId);
             return getWishCount(movieId);
         }
@@ -95,18 +95,18 @@ public class WishService {
     /** 同步写回 DB（降级或 MQ 不可用时） */
     private void syncWriteBack(Long userId, Long movieId) {
         try {
-            UserWishPO wish = new UserWishPO();
+            ActivityFollowPO wish = new ActivityFollowPO();
             wish.setUserId(userId);
-            wish.setMovieId(movieId);
+            wish.setActivityId(movieId);
             wish.setCreateTime(LocalDateTime.now());
-            userWishMapper.insert(wish);
+            activityFollowMapper.insert(wish);
         } catch (Exception e) {
             log.debug("[Wish] Wish record already exists: userId={}, movieId={}", userId, movieId);
         }
-        MoviePO movie = movieMapper.selectById(movieId);
+        ActivityPO movie = activityMapper.selectById(movieId);
         if (movie != null) {
             movie.setWish(movie.getWish() + 1);
-            movieMapper.updateById(movie);
+            activityMapper.updateById(movie);
         }
     }
 
@@ -124,7 +124,7 @@ public class WishService {
             }
         }
         // 降级：从 DB 查询
-        MoviePO movie = movieMapper.selectById(movieId);
+        ActivityPO movie = activityMapper.selectById(movieId);
         return movie != null ? movie.getWish() : 0;
     }
 
@@ -144,10 +144,10 @@ public class WishService {
                 log.warn("[Wish] Redis check failed, fallback to DB", e);
             }
         }
-        return userWishMapper.selectCount(
-                new LambdaQueryWrapper<UserWishPO>()
-                        .eq(UserWishPO::getUserId, userId)
-                        .eq(UserWishPO::getMovieId, movieId)
+        return activityFollowMapper.selectCount(
+                new LambdaQueryWrapper<ActivityFollowPO>()
+                        .eq(ActivityFollowPO::getUserId, userId)
+                        .eq(ActivityFollowPO::getActivityId, movieId)
         ) > 0;
     }
 }

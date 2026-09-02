@@ -5,9 +5,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.maoyan.common.constants.CacheConstants;
-import com.maoyan.dao.mapper.MovieMapper;
+import com.maoyan.dao.mapper.ActivityMapper;
 import com.maoyan.domain.enums.MovieStatusEnum;
-import com.maoyan.domain.model.po.MoviePO;
+import com.maoyan.domain.model.po.ActivityPO;
 import com.maoyan.domain.model.vo.MovieVO;
 import com.maoyan.service.cache.MultiLevelCacheService;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 public class MovieService {
 
     @Resource
-    private MovieMapper movieMapper;
+    private ActivityMapper activityMapper;
 
     @Resource
     private MultiLevelCacheService cacheService;
@@ -38,12 +38,12 @@ public class MovieService {
     public List<MovieVO> getHotMovies() {
         return cacheService.get(CacheConstants.HOT_MOVIES, () -> {
             log.info("从数据库加载热映电影列表");
-            LambdaQueryWrapper<MoviePO> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(MoviePO::getMovieStatus, MovieStatusEnum.HOT.getCode())
-                    .eq(MoviePO::getDeleted, 0)
-                    .orderByAsc(MoviePO::getSortOrder)
-                    .orderByAsc(MoviePO::getId);
-            return movieMapper.selectList(wrapper).stream()
+            LambdaQueryWrapper<ActivityPO> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(ActivityPO::getMovieStatus, MovieStatusEnum.HOT.getCode())
+                    .eq(ActivityPO::getDeleted, 0)
+                    .orderByAsc(ActivityPO::getSortOrder)
+                    .orderByAsc(ActivityPO::getId);
+            return activityMapper.selectList(wrapper).stream()
                     .map(this::toVO)
                     .toList();
         });
@@ -55,7 +55,7 @@ public class MovieService {
     public List<Long> getHotMovieIds() {
         return cacheService.get(CacheConstants.HOT_MOVIES + ":ids", () -> {
             log.info("从数据库加载热映电影ID列表");
-            return movieMapper.selectHotMovieIds();
+            return activityMapper.selectHotMovieIds();
         });
     }
 
@@ -65,12 +65,12 @@ public class MovieService {
     public List<MovieVO> getComingMovies() {
         return cacheService.get(CacheConstants.COMING_MOVIES, () -> {
             log.info("从数据库加载即将上映电影列表");
-            LambdaQueryWrapper<MoviePO> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(MoviePO::getMovieStatus, MovieStatusEnum.COMING.getCode())
-                    .eq(MoviePO::getDeleted, 0)
-                    .orderByAsc(MoviePO::getSortOrder)
-                    .orderByAsc(MoviePO::getId);
-            return movieMapper.selectList(wrapper).stream()
+            LambdaQueryWrapper<ActivityPO> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(ActivityPO::getMovieStatus, MovieStatusEnum.COMING.getCode())
+                    .eq(ActivityPO::getDeleted, 0)
+                    .orderByAsc(ActivityPO::getSortOrder)
+                    .orderByAsc(ActivityPO::getId);
+            return activityMapper.selectList(wrapper).stream()
                     .map(this::toVO)
                     .toList();
         });
@@ -82,7 +82,7 @@ public class MovieService {
     public List<Long> getComingMovieIds() {
         return cacheService.get(CacheConstants.COMING_MOVIES + ":ids", () -> {
             log.info("从数据库加载即将上映电影ID列表");
-            return movieMapper.selectComingMovieIds();
+            return activityMapper.selectComingMovieIds();
         });
     }
 
@@ -92,12 +92,12 @@ public class MovieService {
     public List<MovieVO> getMostExpected() {
         return cacheService.get(CacheConstants.MOST_EXPECTED, () -> {
             log.info("从数据库加载最受期待电影列表");
-            LambdaQueryWrapper<MoviePO> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(MoviePO::getMovieStatus, MovieStatusEnum.COMING.getCode())
-                    .eq(MoviePO::getDeleted, 0)
-                    .orderByDesc(MoviePO::getWish)
+            LambdaQueryWrapper<ActivityPO> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(ActivityPO::getMovieStatus, MovieStatusEnum.COMING.getCode())
+                    .eq(ActivityPO::getDeleted, 0)
+                    .orderByDesc(ActivityPO::getWish)
                     .last("LIMIT 10");
-            return movieMapper.selectList(wrapper).stream()
+            return activityMapper.selectList(wrapper).stream()
                     .map(this::toVO)
                     .toList();
         });
@@ -110,10 +110,10 @@ public class MovieService {
         if (ids == null || ids.isEmpty()) {
             return Collections.emptyList();
         }
-        List<MoviePO> poList = movieMapper.selectByIds(ids);
+        List<ActivityPO> poList = activityMapper.selectByIds(ids);
         // 按传入的 ID 顺序排序（替代 MySQL FIELD() 函数，兼容 H2）
-        Map<Long, MoviePO> poMap = poList.stream()
-                .collect(Collectors.toMap(MoviePO::getId, p -> p, (a, b) -> a));
+        Map<Long, ActivityPO> poMap = poList.stream()
+                .collect(Collectors.toMap(ActivityPO::getId, p -> p, (a, b) -> a));
         return ids.stream()
                 .map(poMap::get)
                 .filter(Objects::nonNull)
@@ -126,7 +126,7 @@ public class MovieService {
      */
     public MovieVO getMovieDetail(Long movieId) {
         if (movieId == null) return null;
-        MoviePO po = movieMapper.selectById(movieId);
+        ActivityPO po = activityMapper.selectById(movieId);
         if (po == null || po.getDeleted() == 1) {
             return null;
         }
@@ -137,7 +137,7 @@ public class MovieService {
      * 搜索电影
      */
     public List<MovieVO> searchMovies(String keyword) {
-        return movieMapper.searchByKeyword(keyword).stream()
+        return activityMapper.searchByKeyword(keyword).stream()
                 .map(this::toVO)
                 .toList();
     }
@@ -150,8 +150,8 @@ public class MovieService {
     public Map<String, Object> filterMovies(Integer movieStatus, String cat, String src, Integer year,
                                              String sortBy, int page, int pageSize) {
         int offset = (page - 1) * pageSize;
-        List<MoviePO> poList = movieMapper.filterMovies(movieStatus, cat, src, year, sortBy, offset, pageSize + 1);
-        long total = movieMapper.countFilterMovies(movieStatus, cat, src, year);
+        List<ActivityPO> poList = activityMapper.filterMovies(movieStatus, cat, src, year, sortBy, offset, pageSize + 1);
+        long total = activityMapper.countFilterMovies(movieStatus, cat, src, year);
 
         boolean hasMore = poList.size() > pageSize;
         if (hasMore) {
@@ -170,7 +170,7 @@ public class MovieService {
     // ========== PO → VO 转换 ==========
 
     /** 列表页VO（包含筛选所需的cat/src/releaseYear） */
-    private MovieVO toListVO(MoviePO po) {
+    private MovieVO toListVO(ActivityPO po) {
         MovieVO vo = toVO(po);
         vo.setCat(po.getCat());
         vo.setSrc(po.getSrc());
@@ -180,7 +180,7 @@ public class MovieService {
         return vo;
     }
 
-    private MovieVO toVO(MoviePO po) {
+    private MovieVO toVO(ActivityPO po) {
         MovieVO vo = new MovieVO();
         vo.setId(po.getId());
         vo.setNm(po.getNm());
@@ -201,7 +201,7 @@ public class MovieService {
         return vo;
     }
 
-    private MovieVO toDetailVO(MoviePO po) {
+    private MovieVO toDetailVO(ActivityPO po) {
         MovieVO vo = toVO(po);
         vo.setEnm(po.getEnm());
         vo.setCat(po.getCat());

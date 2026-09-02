@@ -1,11 +1,11 @@
 package com.maoyan.service.mq;
 
 import com.maoyan.common.constants.MQConstants;
-import com.maoyan.dao.mapper.MovieMapper;
-import com.maoyan.dao.mapper.UserWishMapper;
+import com.maoyan.dao.mapper.ActivityFollowMapper;
+import com.maoyan.dao.mapper.ActivityMapper;
 import com.maoyan.domain.model.event.WishEvent;
-import com.maoyan.domain.model.po.MoviePO;
-import com.maoyan.domain.model.po.UserWishPO;
+import com.maoyan.domain.model.po.ActivityFollowPO;
+import com.maoyan.domain.model.po.ActivityPO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
@@ -30,24 +30,24 @@ import java.time.LocalDateTime;
 )
 public class WishWriteBackConsumer implements RocketMQListener<WishEvent> {
 
-    private final MovieMapper movieMapper;
-    private final UserWishMapper userWishMapper;
+    private final ActivityMapper activityMapper;
+    private final ActivityFollowMapper activityFollowMapper;
 
     @Override
     public void onMessage(WishEvent event) {
         try {
             try {
-                UserWishPO wish = new UserWishPO();
+                ActivityFollowPO wish = new ActivityFollowPO();
                 wish.setUserId(event.getUserId());
-                wish.setMovieId(event.getMovieId());
+                wish.setActivityId(event.getMovieId());
                 wish.setCreateTime(LocalDateTime.now());
-                userWishMapper.insert(wish);
+                activityFollowMapper.insert(wish);
             } catch (Exception e) { /* 唯一索引冲突=已存在 */ }
 
-            MoviePO movie = movieMapper.selectById(event.getMovieId());
+            ActivityPO movie = activityMapper.selectById(event.getMovieId());
             if (movie != null) {
                 movie.setWish(movie.getWish() + event.getDelta());
-                movieMapper.updateById(movie);
+                activityMapper.updateById(movie);
             }
             log.debug("[WishConsumer] Writeback success: userId={}, movieId={}", event.getUserId(), event.getMovieId());
         } catch (Exception e) {

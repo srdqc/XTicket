@@ -17,7 +17,7 @@ public class MovieFilterSqlProvider {
     public String filterMovies(Integer movieStatus, String cat, String src, Integer year, String sortBy, int offset, int limit) {
         SQL sql = new SQL();
         sql.SELECT("*");
-        sql.FROM("movie");
+        sql.FROM("activity");
 
         appendWhere(sql, movieStatus, cat, src, year);
 
@@ -40,7 +40,7 @@ public class MovieFilterSqlProvider {
     public String countFilterMovies(Integer movieStatus, String cat, String src, Integer year) {
         SQL sql = new SQL();
         sql.SELECT("COUNT(*)");
-        sql.FROM("movie");
+        sql.FROM("activity");
         appendWhere(sql, movieStatus, cat, src, year);
         return sql.toString();
     }

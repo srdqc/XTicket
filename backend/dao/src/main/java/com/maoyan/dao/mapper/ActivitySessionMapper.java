@@ -2,21 +2,23 @@ package com.maoyan.dao.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.maoyan.domain.model.dto.OrderSnapshotSourceDTO;
-import com.maoyan.domain.model.po.SchedulePO;
+import com.maoyan.domain.model.po.ActivitySessionPO;
 import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
 /**
- * 场次 Mapper（MyBatis 高级用法示范：XML + 注解混用、乐观锁扣库存）
+ * 活动场次 Mapper。
+ *
+ * <p>Phase 3A 已切换到底层 activity_session 表，上层 schedule API 暂时兼容。</p>
  */
-public interface ScheduleMapper extends BaseMapper<SchedulePO> {
+public interface ActivitySessionMapper extends BaseMapper<ActivitySessionPO> {
 
     /**
      * 查询电影在指定日期的场次（按影院分组展示）
      */
-    @Select("SELECT * FROM movie_schedule WHERE movie_id = #{movieId} AND show_date = #{showDate} AND status = 1 AND deleted = 0 ORDER BY show_time ASC")
-    List<SchedulePO> selectByMovieAndDate(@Param("movieId") Long movieId, @Param("showDate") String showDate);
+    @Select("SELECT * FROM activity_session WHERE activity_id = #{movieId} AND show_date = #{showDate} AND status = 1 AND deleted = 0 ORDER BY show_time ASC")
+    List<ActivitySessionPO> selectByMovieAndDate(@Param("movieId") Long movieId, @Param("showDate") String showDate);
 
     /**
      * 乐观锁扣减库存 — 防超卖核心 SQL
@@ -24,28 +26,28 @@ public interface ScheduleMapper extends BaseMapper<SchedulePO> {
      * <p>只有 version 匹配且 available_seats >= seatCount 时才扣减，
      * 返回影响行数：1=成功，0=版本冲突或库存不足</p>
      */
-    @Update("UPDATE movie_schedule SET available_seats = available_seats - #{seatCount}, version = version + 1, update_time = CURRENT_TIMESTAMP WHERE id = #{scheduleId} AND version = #{version} AND available_seats >= #{seatCount} AND deleted = 0")
+    @Update("UPDATE activity_session SET available_seats = available_seats - #{seatCount}, version = version + 1, update_time = CURRENT_TIMESTAMP WHERE id = #{scheduleId} AND version = #{version} AND available_seats >= #{seatCount} AND deleted = 0")
     int deductStock(@Param("scheduleId") Long scheduleId, @Param("seatCount") int seatCount, @Param("version") int version);
 
     /**
      * 回滚库存（订单取消/退款时）
      */
-    @Update("UPDATE movie_schedule SET available_seats = available_seats + #{seatCount}, version = version + 1, update_time = CURRENT_TIMESTAMP WHERE id = #{scheduleId} AND deleted = 0")
+    @Update("UPDATE activity_session SET available_seats = available_seats + #{seatCount}, version = version + 1, update_time = CURRENT_TIMESTAMP WHERE id = #{scheduleId} AND deleted = 0")
     int rollbackStock(@Param("scheduleId") Long scheduleId, @Param("seatCount") int seatCount);
 
     /**
      * 查询指定电影在某日全部影院的场次（购票选影院页）
      */
     @Select("""
-        SELECT ms.*, c.nm as cinema_name FROM movie_schedule ms
-        LEFT JOIN cinema c ON ms.cinema_id = c.id
-        WHERE ms.movie_id = #{movieId} AND ms.show_date = #{showDate} AND ms.status = 1 AND ms.deleted = 0
+        SELECT ms.*, c.nm as cinema_name FROM activity_session ms
+        LEFT JOIN venue c ON ms.venue_id = c.id
+        WHERE ms.activity_id = #{movieId} AND ms.show_date = #{showDate} AND ms.status = 1 AND ms.deleted = 0
         ORDER BY c.sort_order ASC, ms.show_time ASC
     """)
     @Results({
         @Result(property = "id", column = "id"),
-        @Result(property = "movieId", column = "movie_id"),
-        @Result(property = "cinemaId", column = "cinema_id"),
+        @Result(property = "activityId", column = "activity_id"),
+        @Result(property = "venueId", column = "venue_id"),
         @Result(property = "hallName", column = "hall_name"),
         @Result(property = "showDate", column = "show_date"),
         @Result(property = "showTime", column = "show_time"),
@@ -57,12 +59,12 @@ public interface ScheduleMapper extends BaseMapper<SchedulePO> {
         @Result(property = "status", column = "status"),
         @Result(property = "version", column = "version")
     })
-    List<SchedulePO> selectByMovieAndDateAllCinemas(@Param("movieId") Long movieId, @Param("showDate") String showDate);
+    List<ActivitySessionPO> selectByMovieAndDateAllCinemas(@Param("movieId") Long movieId, @Param("showDate") String showDate);
 
     /**
      * 查询某场次的影院名
      */
-    @Select("SELECT c.nm FROM movie_schedule ms LEFT JOIN cinema c ON ms.cinema_id = c.id WHERE ms.id = #{scheduleId}")
+    @Select("SELECT c.nm FROM activity_session ms LEFT JOIN venue c ON ms.venue_id = c.id WHERE ms.id = #{scheduleId}")
     String selectCinemaNameByScheduleId(@Param("scheduleId") Long scheduleId);
 
     /**
@@ -70,9 +72,9 @@ public interface ScheduleMapper extends BaseMapper<SchedulePO> {
      */
     @Select("""
         SELECT ms.id AS schedule_id,
-               ms.movie_id,
+               ms.activity_id AS movie_id,
                m.nm AS movie_name,
-               ms.cinema_id,
+               ms.venue_id AS cinema_id,
                c.nm AS cinema_name,
                ms.hall_name,
                ms.show_date,
@@ -80,9 +82,9 @@ public interface ScheduleMapper extends BaseMapper<SchedulePO> {
                ms.price AS unit_price,
                ms.status,
                ms.version
-        FROM movie_schedule ms
-        LEFT JOIN movie m ON ms.movie_id = m.id AND m.deleted = 0
-        LEFT JOIN cinema c ON ms.cinema_id = c.id AND c.deleted = 0
+        FROM activity_session ms
+        LEFT JOIN activity m ON ms.activity_id = m.id AND m.deleted = 0
+        LEFT JOIN venue c ON ms.venue_id = c.id AND c.deleted = 0
         WHERE ms.id = #{scheduleId}
           AND ms.deleted = 0
         LIMIT 1
@@ -105,19 +107,19 @@ public interface ScheduleMapper extends BaseMapper<SchedulePO> {
     /**
      * 查询某影院有排片的电影ID列表（今天及之后）
      */
-    @Select("SELECT DISTINCT movie_id FROM movie_schedule WHERE cinema_id = #{cinemaId} AND show_date >= #{today} AND status = 1 AND deleted = 0")
+    @Select("SELECT DISTINCT activity_id FROM activity_session WHERE venue_id = #{cinemaId} AND show_date >= #{today} AND status = 1 AND deleted = 0")
     List<Long> selectMovieIdsByCinema(@Param("cinemaId") Long cinemaId, @Param("today") String today);
 
     /**
      * 查询某影院某电影某日的场次
      */
-    @Select("SELECT * FROM movie_schedule WHERE cinema_id = #{cinemaId} AND movie_id = #{movieId} AND show_date = #{showDate} AND status = 1 AND deleted = 0 ORDER BY show_time ASC")
-    List<SchedulePO> selectByCinemaAndMovieAndDate(@Param("cinemaId") Long cinemaId, @Param("movieId") Long movieId, @Param("showDate") String showDate);
+    @Select("SELECT * FROM activity_session WHERE venue_id = #{cinemaId} AND activity_id = #{movieId} AND show_date = #{showDate} AND status = 1 AND deleted = 0 ORDER BY show_time ASC")
+    List<ActivitySessionPO> selectByCinemaAndMovieAndDate(@Param("cinemaId") Long cinemaId, @Param("movieId") Long movieId, @Param("showDate") String showDate);
 
     /**
      * 查询某影院某电影有排片的日期列表
      */
-    @Select("SELECT DISTINCT show_date FROM movie_schedule WHERE cinema_id = #{cinemaId} AND movie_id = #{movieId} AND show_date >= #{today} AND status = 1 AND deleted = 0 ORDER BY show_date ASC")
+    @Select("SELECT DISTINCT show_date FROM activity_session WHERE venue_id = #{cinemaId} AND activity_id = #{movieId} AND show_date >= #{today} AND status = 1 AND deleted = 0 ORDER BY show_date ASC")
     List<String> selectAvailableDatesByCinemaAndMovie(@Param("cinemaId") Long cinemaId, @Param("movieId") Long movieId, @Param("today") String today);
 
     // ==================== 启动时日期刷新（演示数据永不过期） ====================
@@ -125,13 +127,13 @@ public interface ScheduleMapper extends BaseMapper<SchedulePO> {
     /**
      * 获取最早的排片日期
      */
-    @Select("SELECT MIN(show_date) FROM movie_schedule WHERE deleted = 0 AND status = 1")
+    @Select("SELECT MIN(show_date) FROM activity_session WHERE deleted = 0 AND status = 1")
     String selectMinShowDate();
 
     /**
      * 将所有排片日期前移 daysDiff 天，并重置库存和版本号
      * 这样无论何时启动，排片数据都表现为"今天/明天"
      */
-    @Update("UPDATE movie_schedule SET show_date = DATE_ADD(show_date, INTERVAL #{daysDiff} DAY), available_seats = total_seats, version = 0, update_time = CURRENT_TIMESTAMP WHERE deleted = 0")
+    @Update("UPDATE activity_session SET show_date = DATE_ADD(show_date, INTERVAL #{daysDiff} DAY), available_seats = total_seats, version = 0, update_time = CURRENT_TIMESTAMP WHERE deleted = 0")
     int refreshAllScheduleDates(@Param("daysDiff") long daysDiff);
 }

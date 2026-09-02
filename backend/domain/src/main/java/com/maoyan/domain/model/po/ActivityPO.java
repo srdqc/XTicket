@@ -11,17 +11,19 @@ import lombok.EqualsAndHashCode;
 import java.math.BigDecimal;
 
 /**
- * 电影持久化对象
+ * 活动持久化对象。
+ *
+ * <p>Phase 3A 仅迁移底层事实源，电影专属字段暂时保留兼容。</p>
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("movie")
-public class MoviePO extends BaseEntity {
+@TableName("activity")
+public class ActivityPO extends BaseEntity {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 电影名 */
+    /** 活动名称 */
     private String nm;
 
     /** 英文名 */
