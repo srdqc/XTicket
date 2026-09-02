@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 
 /**
- * 想看写回消费者 — RocketMQ 版
+ * 活动关注写回消费者 — RocketMQ 版
  *
  * <p>订阅 WISH_TOPIC，异步写回 DB，保证最终一致性</p>
  */
@@ -28,7 +28,7 @@ import java.time.LocalDateTime;
         topic = MQConstants.WISH_TOPIC,
         consumerGroup = MQConstants.WISH_CONSUMER_GROUP
 )
-public class WishWriteBackConsumer implements RocketMQListener<WishEvent> {
+public class ActivityFollowWriteBackConsumer implements RocketMQListener<WishEvent> {
 
     private final ActivityMapper activityMapper;
     private final ActivityFollowMapper activityFollowMapper;

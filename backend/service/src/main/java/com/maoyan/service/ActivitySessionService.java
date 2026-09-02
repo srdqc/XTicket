@@ -20,12 +20,12 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 场次服务
+ * 活动场次服务
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ScheduleService {
+public class ActivitySessionService {
 
     private final ActivitySessionMapper activitySessionMapper;
     private final StockService stockService;
@@ -62,7 +62,7 @@ public class ScheduleService {
             long daysDiff = ChronoUnit.DAYS.between(minDate, today);
             if (daysDiff > 0) {
                 int rows = activitySessionMapper.refreshAllScheduleDates(daysDiff);
-                log.info("[Schedule] 排片日期刷新：前移 {} 天（{} → {}），共更新 {} 条记录", daysDiff, minDate, today, rows);
+                log.info("[Session] 排片日期刷新：前移 {} 天（{} → {}），共更新 {} 条记录", daysDiff, minDate, today, rows);
             }
         }
     }
@@ -77,7 +77,7 @@ public class ScheduleService {
         Map<Object, Object> dirty = stockService.getDirtyRollbacks();
         if (dirty == null || dirty.isEmpty()) return;
 
-        log.info("[Schedule] Starting stock reconciliation, {} dirty records", dirty.size());
+        log.info("[Session] Starting stock reconciliation, {} dirty records", dirty.size());
         for (Map.Entry<Object, Object> entry : dirty.entrySet()) {
             Long scheduleId = Long.parseLong(entry.getKey().toString());
             int lostRollback = Integer.parseInt(entry.getValue().toString());
@@ -87,15 +87,15 @@ public class ScheduleService {
                 if (db != null) {
                     stockService.initStock(scheduleId, db.getAvailableSeats());
                     stockService.initScheduleDetail(db);
-                    log.info("[Schedule] Reconciled: scheduleId={}, DB stock={}, recovered {} seats",
+                    log.info("[Session] Reconciled: scheduleId={}, DB stock={}, recovered {} seats",
                             scheduleId, db.getAvailableSeats(), lostRollback);
                 }
             } catch (Exception e) {
-                log.error("[Schedule] Failed to reconcile scheduleId={}", scheduleId, e);
+                log.error("[Session] Failed to reconcile scheduleId={}", scheduleId, e);
             }
         }
         stockService.clearDirtyRollbacks();
-        log.info("[Schedule] Reconciliation completed");
+        log.info("[Session] Reconciliation completed");
     }
 
     /**
@@ -104,11 +104,11 @@ public class ScheduleService {
      */
     @Scheduled(cron = "0 5 0 * * ?")
     public void dailyRefresh() {
-        log.info("[Schedule] 每日定时刷新排片日期...");
+        log.info("[Session] 每日定时刷新排片日期...");
         refreshScheduleDates();
         evictScheduleReadCaches();
         warmUpStock();
-        log.info("[Schedule] 每日定时刷新完成");
+        log.info("[Session] 每日定时刷新完成");
     }
 
     /**
@@ -128,13 +128,13 @@ public class ScheduleService {
             stockService.initStock(s.getId(), s.getAvailableSeats());
             stockService.initScheduleDetail(s);
         }
-        log.info("[Schedule] Warmed up {} schedules' stock to Redis", schedules.size());
+        log.info("[Session] Warmed up {} schedules' stock to Redis", schedules.size());
     }
 
     /**
-     * 查询电影某日的场次列表
+     * 查询活动某日的场次列表
      */
-    public List<ScheduleVO> getSchedules(Long movieId, String showDate) {
+    public List<ScheduleVO> getSessions(Long movieId, String showDate) {
         if (showDate == null || showDate.isEmpty()) {
             showDate = LocalDate.now().toString();
         }
@@ -145,16 +145,16 @@ public class ScheduleService {
     /**
      * 根据ID获取场次
      */
-    public ActivitySessionPO getById(Long scheduleId) {
+    public ActivitySessionPO getSessionById(Long scheduleId) {
         return activitySessionMapper.selectById(scheduleId);
     }
 
     /**
-     * 查询某电影在某天所有影院的场次（按影院分组）
+     * 查询某活动在某天所有场馆的场次（按场馆分组）
      *
      * @return { cinemaId: { cinemaName, cinemaAddr, schedules: [ScheduleVO...] } }
      */
-    public List<Map<String, Object>> getSchedulesByCinema(Long movieId, String showDate) {
+    public List<Map<String, Object>> getSessionsByVenue(Long movieId, String showDate) {
         if (showDate == null || showDate.isEmpty()) {
             showDate = LocalDate.now().toString();
         }
@@ -181,7 +181,7 @@ public class ScheduleService {
     }
 
     /**
-     * 获取电影有场次的日期列表
+     * 获取活动有场次的日期列表
      */
     public List<String> getAvailableDates(Long movieId) {
         // 查询未来7天有场次的日期
@@ -221,23 +221,23 @@ public class ScheduleService {
     // ==================== 影院详情页专用 ====================
 
     /**
-     * 获取影院详情
+     * 获取场馆详情
      */
-    public VenuePO getCinemaById(Long cinemaId) {
+    public VenuePO getVenueById(Long cinemaId) {
         return venueMapper.selectById(cinemaId);
     }
 
     /**
-     * 查询某影院有排片的电影ID列表
+     * 查询某场馆有排片的活动ID列表
      */
-    public List<Long> getMovieIdsByCinema(Long cinemaId) {
+    public List<Long> getActivityIdsByVenue(Long cinemaId) {
         return activitySessionMapper.selectMovieIdsByCinema(cinemaId, LocalDate.now().toString());
     }
 
     /**
-     * 查询影院某电影某日的场次
+     * 查询场馆某活动某日的场次
      */
-    public List<ScheduleVO> getCinemaSchedules(Long cinemaId, Long movieId, String showDate) {
+    public List<ScheduleVO> getVenueActivitySessions(Long cinemaId, Long movieId, String showDate) {
         if (showDate == null || showDate.isEmpty()) {
             showDate = LocalDate.now().toString();
         }
@@ -249,9 +249,9 @@ public class ScheduleService {
     }
 
     /**
-     * 查询影院某电影有排片的日期列表
+     * 查询场馆某活动有排片的日期列表
      */
-    public List<String> getCinemaAvailableDates(Long cinemaId, Long movieId) {
+    public List<String> getVenueActivityAvailableDates(Long cinemaId, Long movieId) {
         String cacheKey = CINEMA_SCHEDULE_DATES_CACHE_PREFIX + cinemaId + ":" + movieId;
         return cacheService.get(cacheKey,
                 () -> activitySessionMapper.selectAvailableDatesByCinemaAndMovie(cinemaId, movieId, LocalDate.now().toString()));

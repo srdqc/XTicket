@@ -2,7 +2,7 @@ package com.maoyan.provider.controller;
 
 import com.maoyan.common.annotation.RateLimit;
 import com.maoyan.domain.model.vo.Result;
-import com.maoyan.service.WishService;
+import com.maoyan.service.ActivityFollowService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -17,7 +17,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class WishController {
 
-    private final WishService wishService;
+    private final ActivityFollowService activityFollowService;
 
     /**
      * 用户点击"想看" — Redis 实时 + MQ 异步写回
@@ -30,8 +30,8 @@ public class WishController {
             return Result.fail(401, "请先登录");
         }
 
-        long count = wishService.addWish(userId, movieId);
-        boolean hasWished = wishService.hasWished(userId, movieId);
+        long count = activityFollowService.followActivity(userId, movieId);
+        boolean hasWished = activityFollowService.hasFollowed(userId, movieId);
 
         return Result.ok(Map.of(
                 "wish", count,
@@ -46,11 +46,11 @@ public class WishController {
     public Result<Map<String, Object>> checkWish(@PathVariable Long movieId, HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         if (userId == null) {
-            return Result.ok(Map.of("hasWished", false, "wish", wishService.getWishCount(movieId)));
+            return Result.ok(Map.of("hasWished", false, "wish", activityFollowService.getFollowCount(movieId)));
         }
         return Result.ok(Map.of(
-                "hasWished", wishService.hasWished(userId, movieId),
-                "wish", wishService.getWishCount(movieId)
+                "hasWished", activityFollowService.hasFollowed(userId, movieId),
+                "wish", activityFollowService.getFollowCount(movieId)
         ));
     }
 }

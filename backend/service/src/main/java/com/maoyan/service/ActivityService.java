@@ -18,11 +18,11 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 电影原子服务（使用多级缓存 L1 Caffeine + L2 Redis）
+ * 活动原子服务（使用多级缓存 L1 Caffeine + L2 Redis）
  */
 @Slf4j
 @Service
-public class MovieService {
+public class ActivityService {
 
     @Resource
     private ActivityMapper activityMapper;
@@ -33,11 +33,11 @@ public class MovieService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
-     * 获取热映电影列表（带缓存）
+     * 获取热映活动列表（带缓存）
      */
-    public List<MovieVO> getHotMovies() {
+    public List<MovieVO> getHotActivities() {
         return cacheService.get(CacheConstants.HOT_MOVIES, () -> {
-            log.info("从数据库加载热映电影列表");
+            log.info("从数据库加载热映活动列表");
             LambdaQueryWrapper<ActivityPO> wrapper = new LambdaQueryWrapper<>();
             wrapper.eq(ActivityPO::getMovieStatus, MovieStatusEnum.HOT.getCode())
                     .eq(ActivityPO::getDeleted, 0)
@@ -50,21 +50,21 @@ public class MovieService {
     }
 
     /**
-     * 获取热映电影ID列表（带缓存）
+     * 获取热映活动ID列表（带缓存）
      */
-    public List<Long> getHotMovieIds() {
+    public List<Long> getHotActivityIds() {
         return cacheService.get(CacheConstants.HOT_MOVIES + ":ids", () -> {
-            log.info("从数据库加载热映电影ID列表");
+            log.info("从数据库加载热映活动ID列表");
             return activityMapper.selectHotMovieIds();
         });
     }
 
     /**
-     * 获取即将上映电影列表（带缓存）
+     * 获取即将上映活动列表（带缓存）
      */
-    public List<MovieVO> getComingMovies() {
+    public List<MovieVO> getComingActivities() {
         return cacheService.get(CacheConstants.COMING_MOVIES, () -> {
-            log.info("从数据库加载即将上映电影列表");
+            log.info("从数据库加载即将上映活动列表");
             LambdaQueryWrapper<ActivityPO> wrapper = new LambdaQueryWrapper<>();
             wrapper.eq(ActivityPO::getMovieStatus, MovieStatusEnum.COMING.getCode())
                     .eq(ActivityPO::getDeleted, 0)
@@ -77,21 +77,21 @@ public class MovieService {
     }
 
     /**
-     * 获取即将上映电影ID列表（带缓存）
+     * 获取即将上映活动ID列表（带缓存）
      */
-    public List<Long> getComingMovieIds() {
+    public List<Long> getComingActivityIds() {
         return cacheService.get(CacheConstants.COMING_MOVIES + ":ids", () -> {
-            log.info("从数据库加载即将上映电影ID列表");
+            log.info("从数据库加载即将上映活动ID列表");
             return activityMapper.selectComingMovieIds();
         });
     }
 
     /**
-     * 获取最受期待电影列表（按想看人数排序前10）
+     * 获取最受期待活动列表（按关注人数排序前10）
      */
     public List<MovieVO> getMostExpected() {
         return cacheService.get(CacheConstants.MOST_EXPECTED, () -> {
-            log.info("从数据库加载最受期待电影列表");
+            log.info("从数据库加载最受期待活动列表");
             LambdaQueryWrapper<ActivityPO> wrapper = new LambdaQueryWrapper<>();
             wrapper.eq(ActivityPO::getMovieStatus, MovieStatusEnum.COMING.getCode())
                     .eq(ActivityPO::getDeleted, 0)
@@ -104,9 +104,9 @@ public class MovieService {
     }
 
     /**
-     * 根据ID列表批量查询电影
+     * 根据ID列表批量查询活动
      */
-    public List<MovieVO> getMoviesByIds(List<Long> ids) {
+    public List<MovieVO> getActivitiesByIds(List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
             return Collections.emptyList();
         }
@@ -122,9 +122,9 @@ public class MovieService {
     }
 
     /**
-     * 获取电影详情
+     * 获取活动详情
      */
-    public MovieVO getMovieDetail(Long movieId) {
+    public MovieVO getActivityDetail(Long movieId) {
         if (movieId == null) return null;
         ActivityPO po = activityMapper.selectById(movieId);
         if (po == null || po.getDeleted() == 1) {
@@ -134,20 +134,20 @@ public class MovieService {
     }
 
     /**
-     * 搜索电影
+     * 搜索活动
      */
-    public List<MovieVO> searchMovies(String keyword) {
+    public List<MovieVO> searchActivities(String keyword) {
         return activityMapper.searchByKeyword(keyword).stream()
                 .map(this::toVO)
                 .toList();
     }
 
     /**
-     * 电影筛选（按类型/地区/年份/状态，支持排序+分页）
+     * 活动筛选（按类型/地区/年份/状态，支持排序+分页）
      *
      * @return { movies: MovieVO[], total: long, hasMore: boolean }
      */
-    public Map<String, Object> filterMovies(Integer movieStatus, String cat, String src, Integer year,
+    public Map<String, Object> filterActivities(Integer movieStatus, String cat, String src, Integer year,
                                              String sortBy, int page, int pageSize) {
         int offset = (page - 1) * pageSize;
         List<ActivityPO> poList = activityMapper.filterMovies(movieStatus, cat, src, year, sortBy, offset, pageSize + 1);
@@ -224,7 +224,7 @@ public class MovieService {
                 List<String> photoList = objectMapper.readValue(po.getPhotos(), new TypeReference<>() {});
                 vo.setPhotos(photoList);
             } catch (JsonProcessingException e) {
-                log.warn("解析电影剧照JSON失败, movieId={}", po.getId(), e);
+                log.warn("解析活动剧照JSON失败, movieId={}", po.getId(), e);
                 vo.setPhotos(Collections.emptyList());
             }
         }

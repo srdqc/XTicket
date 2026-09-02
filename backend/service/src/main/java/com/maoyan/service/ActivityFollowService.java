@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 
 /**
- * 想看服务 — 实时处理（面试核心亮点）
+ * 活动关注服务 — 实时处理
  *
  * <h3>架构设计：</h3>
  * <pre>
@@ -39,7 +39,7 @@ import java.time.LocalDateTime;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class WishService {
+public class ActivityFollowService {
 
     @Autowired(required = false)
     private StringRedisTemplate stringRedisTemplate;
@@ -50,18 +50,18 @@ public class WishService {
     private final ActivityMapper activityMapper;
 
     /**
-     * 用户点击"想看"（核心方法）
+     * 用户关注活动（核心方法）
      *
      * @return 操作后的总想看数
      */
-    public long addWish(Long userId, Long movieId) {
+    public long followActivity(Long userId, Long movieId) {
         // 当 Redis 可用时：Redis Set 去重 + Hash 计数 + MQ 异步写回
         if (stringRedisTemplate != null) {
             String userWishKey = CacheConstants.USER_WISH_PREFIX + userId;
             Boolean added = stringRedisTemplate.opsForSet().add(userWishKey, String.valueOf(movieId)) == 1;
             if (Boolean.FALSE.equals(added)) {
                 log.info("[Wish] User {} already wished movie {}", userId, movieId);
-                return getWishCount(movieId);
+                return getFollowCount(movieId);
             }
             Long count = stringRedisTemplate.opsForHash().increment(
                     CacheConstants.MOVIE_WISH_HASH, String.valueOf(movieId), 1);
@@ -86,10 +86,10 @@ public class WishService {
         check.eq(ActivityFollowPO::getUserId, userId).eq(ActivityFollowPO::getActivityId, movieId);
         if (activityFollowMapper.selectCount(check) > 0) {
             log.info("[Wish] User {} already wished movie {} (DB check)", userId, movieId);
-            return getWishCount(movieId);
+            return getFollowCount(movieId);
         }
         syncWriteBack(userId, movieId);
-        return getWishCount(movieId);
+        return getFollowCount(movieId);
     }
 
     /** 同步写回 DB（降级或 MQ 不可用时） */
@@ -111,9 +111,9 @@ public class WishService {
     }
 
     /**
-     * 获取电影实时想看数（优先从 Redis 读取）
+     * 获取活动实时关注数（优先从 Redis 读取）
      */
-    public long getWishCount(Long movieId) {
+    public long getFollowCount(Long movieId) {
         if (stringRedisTemplate != null) {
             try {
                 Object val = stringRedisTemplate.opsForHash().get(
@@ -129,9 +129,9 @@ public class WishService {
     }
 
     /**
-     * 检查用户是否已想看
+     * 检查用户是否已关注活动
      */
-    public boolean hasWished(Long userId, Long movieId) {
+    public boolean hasFollowed(Long userId, Long movieId) {
         if (stringRedisTemplate != null) {
             try {
                 return Boolean.TRUE.equals(
