@@ -32,7 +32,7 @@ function DbLines([string]$sql) {
 function DbScalar([string]$sql) {
     $lines = @(DbLines $sql)
     if ($lines.Count -lt 2) { return $null }
-    return ($lines[1] -split "`t", -1)[0]
+    return ($lines[1] -split "`t")[0]
 }
 
 function DbExec([string]$sql) { DbLines $sql | Out-Null }
@@ -40,10 +40,10 @@ function DbExec([string]$sql) { DbLines $sql | Out-Null }
 function DbRows([string]$sql) {
     $lines = @(DbLines $sql)
     if ($lines.Count -lt 2) { return @() }
-    $headers = $lines[0] -split "`t", -1
+    $headers = $lines[0] -split "`t"
     $rows = @()
     for ($i = 1; $i -lt $lines.Count; $i++) {
-        $values = $lines[$i] -split "`t", -1
+        $values = $lines[$i] -split "`t"
         $obj = [ordered]@{}
         for ($j = 0; $j -lt $headers.Count; $j++) { $obj[$headers[$j]] = if ($j -lt $values.Count) { $values[$j] } else { $null } }
         $rows += [pscustomobject]$obj
@@ -131,7 +131,7 @@ function AddResult([string]$name, [string]$result, $evidence) {
 }
 
 Assert-Local
-$scheduleId = [long](DbScalar "SELECT id FROM movie_schedule WHERE status = 1 AND deleted = 0 AND available_seats > 20 ORDER BY available_seats DESC, id LIMIT 1")
+$scheduleId = [long](DbScalar "SELECT id FROM activity_session WHERE status = 1 AND deleted = 0 AND available_seats > 20 ORDER BY available_seats DESC, id LIMIT 1")
 
 $u1 = NewUser "normal"
 $o1 = CreatePending $u1 $scheduleId
@@ -198,17 +198,17 @@ AddResult "insufficientPoints" ($(if ($r6.code -eq 400 -and (PaymentCount $o6.or
 
 $u7 = NewUser "amount"
 $o7 = CreatePending $u7 $scheduleId
-$oldPrice = DbScalar "SELECT price FROM movie_schedule WHERE id = $scheduleId"
+$oldPrice = DbScalar "SELECT price FROM activity_session WHERE id = $scheduleId"
 $orderTotal = OrderTotal $o7.orderNo
 try {
-    DbExec "UPDATE movie_schedule SET price = price + 10, update_time = NOW() WHERE id = $scheduleId"
+    DbExec "UPDATE activity_session SET price = price + 10, update_time = NOW() WHERE id = $scheduleId"
     $r7 = Api POST "/api/payment/pay?orderNo=$($o7.orderNo)" $null $u7.token
     $payAmount = [decimal](PaymentRow $o7.orderNo).amount
     AddResult "snapshotAmount" ($(if ($r7.code -eq 200 -and $payAmount -eq $orderTotal) { "PASS" } else { "FAIL" })) @{
         orderNo=$o7.orderNo; orderTotal=$orderTotal; paymentAmount=$payAmount; oldSchedulePrice=$oldPrice
     }
 } finally {
-    DbExec "UPDATE movie_schedule SET price = $oldPrice, update_time = NOW() WHERE id = $scheduleId"
+    DbExec "UPDATE activity_session SET price = $oldPrice, update_time = NOW() WHERE id = $scheduleId"
 }
 
 $overall = if (@($results | Where-Object { $_.result -ne "PASS" }).Count -eq 0) { "PASS" } else { "FAIL" }

@@ -52,11 +52,11 @@ function Invoke-DbRows {
     param([string]$Sql)
     $lines = @(Invoke-DbLines $Sql)
     if ($lines.Count -eq 0) { return @() }
-    $headers = $lines[0] -split "`t", -1
+    $headers = $lines[0] -split "`t"
     $rows = @()
     for ($i = 1; $i -lt $lines.Count; $i++) {
         if ([string]::IsNullOrWhiteSpace($lines[$i])) { continue }
-        $values = $lines[$i] -split "`t", -1
+        $values = $lines[$i] -split "`t"
         $obj = [ordered]@{}
         for ($j = 0; $j -lt $headers.Count; $j++) {
             $value = if ($j -lt $values.Count) { $values[$j] } else { $null }
@@ -71,7 +71,7 @@ function Invoke-DbScalar {
     param([string]$Sql)
     $lines = @(Invoke-DbLines $Sql -NoHeader)
     if ($lines.Count -eq 0) { return $null }
-    return Convert-DbValue (($lines[0] -split "`t", -1)[0])
+    return Convert-DbValue (($lines[0] -split "`t")[0])
 }
 
 function Invoke-DbExec {
@@ -201,7 +201,7 @@ function New-TestUser {
 function Select-Schedule {
     $sql = @"
 SELECT ms.id, ms.available_seats, ms.price, COUNT(sl.id) AS lock_rows
-FROM movie_schedule ms
+FROM activity_session ms
 LEFT JOIN seat_lock sl ON sl.schedule_id = ms.id
 WHERE ms.status = 1 AND ms.deleted = 0 AND ms.available_seats >= 10
   AND TIMESTAMP(ms.show_date, STR_TO_DATE(ms.show_time, '%H:%i')) > NOW()

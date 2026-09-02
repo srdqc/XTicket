@@ -15,7 +15,7 @@ USE xticket;
 -- 表结构
 -- =====================================================
 
-CREATE TABLE IF NOT EXISTS movie (
+CREATE TABLE IF NOT EXISTS activity (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     nm              VARCHAR(200)  NOT NULL        COMMENT '电影名',
     enm             VARCHAR(200)                  COMMENT '英文名',
@@ -41,9 +41,9 @@ CREATE TABLE IF NOT EXISTS movie (
     create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted         INT           DEFAULT 0,
-    INDEX idx_movie_status (movie_status, deleted, sort_order),
-    INDEX idx_movie_wish (wish),
-    INDEX idx_movie_year (release_year, movie_status, deleted)
+    INDEX idx_activity_status (movie_status, deleted, sort_order),
+    INDEX idx_activity_wish (wish),
+    INDEX idx_activity_year (release_year, movie_status, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS city (
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS city (
     py  VARCHAR(100)                      COMMENT '拼音'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS cinema (
+CREATE TABLE IF NOT EXISTS venue (
     id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
     nm                  VARCHAR(200) NOT NULL  COMMENT '影院名称',
     addr                VARCHAR(500)           COMMENT '地址',
@@ -71,8 +71,8 @@ CREATE TABLE IF NOT EXISTS cinema (
     create_time         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     update_time         TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted             INT DEFAULT 0,
-    INDEX idx_cinema_city (city_id, deleted, sort_order),
-    INDEX idx_cinema_brand (brand_id)
+    INDEX idx_venue_city (city_id, deleted, sort_order),
+    INDEX idx_venue_brand (brand_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS cinema_brand (
@@ -111,16 +111,16 @@ CREATE TABLE IF NOT EXISTS hall_type (
     count INT DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS cinema_service_rel (
-    cinema_id  BIGINT NOT NULL,
+CREATE TABLE IF NOT EXISTS venue_service_rel (
+    venue_id   BIGINT NOT NULL,
     service_id BIGINT NOT NULL,
-    PRIMARY KEY (cinema_id, service_id)
+    PRIMARY KEY (venue_id, service_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS cinema_hall_type_rel (
-    cinema_id    BIGINT NOT NULL,
+CREATE TABLE IF NOT EXISTS venue_hall_type_rel (
+    venue_id     BIGINT NOT NULL,
     hall_type_id BIGINT NOT NULL,
-    PRIMARY KEY (cinema_id, hall_type_id)
+    PRIMARY KEY (venue_id, hall_type_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sys_user (
@@ -136,10 +136,10 @@ CREATE TABLE IF NOT EXISTS sys_user (
     INDEX idx_user_account (account)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS movie_schedule (
+CREATE TABLE IF NOT EXISTS activity_session (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-    movie_id        BIGINT        NOT NULL      COMMENT '关联电影',
-    cinema_id       BIGINT        NOT NULL      COMMENT '关联影院',
+    activity_id     BIGINT        NOT NULL      COMMENT '关联活动',
+    venue_id        BIGINT        NOT NULL      COMMENT '关联场馆',
     hall_name       VARCHAR(50)                 COMMENT '影厅名称',
     show_date       DATE          NOT NULL      COMMENT '放映日期',
     show_time       VARCHAR(10)   NOT NULL      COMMENT '放映时间 HH:mm',
@@ -153,8 +153,8 @@ CREATE TABLE IF NOT EXISTS movie_schedule (
     create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted         INT           DEFAULT 0,
-    INDEX idx_schedule_movie (movie_id, show_date, deleted),
-    INDEX idx_schedule_cinema (cinema_id, show_date, deleted)
+    INDEX idx_session_activity (activity_id, show_date, deleted),
+    INDEX idx_session_venue (venue_id, show_date, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS ticket_order (
@@ -200,17 +200,17 @@ CREATE TABLE IF NOT EXISTS payment_record (
     UNIQUE INDEX uq_payment_record_order_no (order_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS user_wish (
+CREATE TABLE IF NOT EXISTS activity_follow (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id         BIGINT        NOT NULL      COMMENT '用户ID',
-    movie_id        BIGINT        NOT NULL      COMMENT '电影ID',
+    activity_id     BIGINT        NOT NULL      COMMENT '活动ID',
     create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE INDEX idx_user_wish_unique (user_id, movie_id)
+    UNIQUE INDEX idx_activity_follow_unique (user_id, activity_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS cinema_hall (
+CREATE TABLE IF NOT EXISTS venue_hall (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-    cinema_id       BIGINT        NOT NULL      COMMENT '关联影院',
+    venue_id        BIGINT        NOT NULL      COMMENT '关联场馆',
     hall_name       VARCHAR(50)   NOT NULL      COMMENT '影厅名称',
     seat_rows       INT           NOT NULL DEFAULT 10  COMMENT '座位行数',
     seat_cols       INT           NOT NULL DEFAULT 14  COMMENT '座位列数',
@@ -221,8 +221,8 @@ CREATE TABLE IF NOT EXISTS cinema_hall (
     create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted         INT           DEFAULT 0,
-    INDEX idx_hall_cinema (cinema_id, deleted),
-    UNIQUE INDEX idx_hall_unique (cinema_id, hall_name, deleted)
+    INDEX idx_hall_venue (venue_id, deleted),
+    UNIQUE INDEX idx_hall_unique (venue_id, hall_name, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS seat_lock (
@@ -264,7 +264,7 @@ CREATE TABLE IF NOT EXISTS order_seat (
 -- =====================================================
 
 -- ==================== 正在热映电影 ====================
-INSERT INTO movie (id, nm, enm, img, sc, star, cat, src, dur, pub_desc, dra, wish, vd, photos, pn, show_info, coming_title, movie_status, global_released, sort_order) VALUES
+INSERT INTO activity (id, nm, enm, img, sc, star, cat, src, dur, pub_desc, dra, wish, vd, photos, pn, show_info, coming_title, movie_status, global_released, sort_order) VALUES
 (1,  '逐光者',       'The Light Chaser',      'https://picsum.photos/seed/movie1/180/250',  9.2, '张译,吴京,黄渤',     '剧情,科幻',   '中国大陆', 128, '2026-01-15中国大陆上映', '在不远的未来，一位天才物理学家发现了超越光速的秘密，但这个发现将他推入了一个关于时间与命运的漩涡。', 52890, '', '[]', 0, '今天28家影院放映356场',  NULL, 1, 1, 1),
 (2,  '长安幻夜',     'Chang''an Fantasy',     'https://picsum.photos/seed/movie2/180/250',  8.8, '易烊千玺,赵丽颖',    '奇幻,古装',   '中国大陆', 136, '2026-01-20中国大陆上映', '盛唐长安，一场突如其来的妖异事件打破了繁华盛世的宁静，少年剑客与女巫师联手揭开惊天阴谋。', 38920, '', '[]', 0, '今天25家影院放映298场',  NULL, 1, 1, 2),
 (3,  '无声的证人',   'Silent Witness',        'https://picsum.photos/seed/movie3/180/250',  8.5, '朱一龙,倪妮',        '悬疑,犯罪',   '中国大陆', 118, '2026-01-22中国大陆上映', '法医林默在一具尸体上发现了不可思议的线索，随着调查深入，一个横跨十年的连环案浮出水面。', 27650, '', '[]', 0, '今天22家影院放映276场',  NULL, 1, 1, 3),
@@ -292,7 +292,7 @@ INSERT INTO movie (id, nm, enm, img, sc, star, cat, src, dur, pub_desc, dra, wis
 (25, '大话西游之后传', 'Journey West Sequel',  'https://picsum.photos/seed/movie25/180/250', 7.8, '沈腾,马丽',          '喜剧,奇幻',   '中国大陆', 110, '2026-02-03中国大陆上映', '至尊宝在500年后再次醒来，紫霞仙子却已经忘记了一切，一段新的寻爱之旅就此开始。', 43200, '', '[]', 0, '今天28家影院放映350场',  NULL, 1, 1, 25);
 
 -- ==================== 即将上映电影 ====================
-INSERT INTO movie (id, nm, enm, img, sc, star, cat, src, dur, pub_desc, dra, wish, vd, photos, pn, show_info, coming_title, movie_status, global_released, sort_order) VALUES
+INSERT INTO activity (id, nm, enm, img, sc, star, cat, src, dur, pub_desc, dra, wish, vd, photos, pn, show_info, coming_title, movie_status, global_released, sort_order) VALUES
 (26, '明日边缘',     'Edge of Tomorrow',      'https://picsum.photos/seed/movie26/180/250', 0, '李现,杨幂',          '科幻,动作',   '中国大陆', 135, '2026年3月15日上映', '一名普通士兵在未来战场上获得了时间循环能力，在无数次"死亡"中成长为拯救世界的英雄。', 67800, '', '[]', 0, NULL, '3月15日 周日', 0, 0, 1),
 (27, '春风化雨',     'Spring Rain',           'https://picsum.photos/seed/movie27/180/250', 0, '黄渤,海清',          '剧情',        '中国大陆', 118, '2026年3月18日上映', '乡村教师用二十年的坚守，改变了一代又一代山村孩子的命运。', 42300, '', '[]', 0, NULL, '3月18日 周三', 0, 0, 2),
 (28, '龙族崛起',     'Rise of Dragons',       'https://picsum.photos/seed/movie28/180/250', 0, '吴京,赵丽颖',        '奇幻,动作',   '中国大陆', 150, '2026年3月20日上映', '远古龙族的最后传人觉醒了沉睡千年的龙血力量，一场人与龙的史诗战争即将爆发。', 78500, '', '[]', 0, NULL, '3月20日 周五', 0, 0, 3),
@@ -376,7 +376,7 @@ INSERT INTO hall_type (id, name, count) VALUES
 
 
 -- ==================== 影院数据（北京） ====================
-INSERT INTO cinema (id, nm, addr, city_id, brand_id, district_id, area_id, distance, allow_refund, endorse, snack, vip_tag, hall_types_json, card_promotion_tag, sort_order) VALUES
+INSERT INTO venue (id, nm, addr, city_id, brand_id, district_id, area_id, distance, allow_refund, endorse, snack, vip_tag, hall_types_json, card_promotion_tag, sort_order) VALUES
 (1,  '万达影城(朝阳大悦城店)',   '北京市朝阳区朝阳北路101号大悦城9层',           1, 1, 1, 101, '1.2km', 1, 1, 1, 'VIP厅',  '["IMAX","杜比全景声"]',  '新客立减10元', 1),
 (2,  '星美国际影城(三里屯店)',   '北京市朝阳区三里屯路19号三里屯太古里南区B1', 1, 2, 1, 102, '2.3km', 1, 0, 1, '',       '["杜比全景声"]',         '会员9折',      2),
 (3,  '金逸影城(望京店)',         '北京市朝阳区望京街9号望京国际商业中心B1层',   1, 3, 1, 103, '3.5km', 1, 1, 1, 'VIP厅',  '["IMAX","4DX"]',         '',             3),
@@ -405,7 +405,7 @@ INSERT INTO cinema (id, nm, addr, city_id, brand_id, district_id, area_id, dista
 
 
 -- ==================== 影院-服务关联 ====================
-INSERT INTO cinema_service_rel (cinema_id, service_id) VALUES
+INSERT INTO venue_service_rel (venue_id, service_id) VALUES
 (1,1),(1,2),(1,3),(1,4), (2,1),(2,3), (3,1),(3,2),(3,3), (4,1),(4,2),(4,3),(4,4),
 (5,1),(5,2),(5,3),(5,4), (6,1),(6,3), (7,1),(7,2), (8,3),
 (9,1),(9,2),(9,3),(9,4), (10,1),(10,2), (11,1),(11,3), (12,1),(12,2),(12,3),
@@ -416,7 +416,7 @@ INSERT INTO cinema_service_rel (cinema_id, service_id) VALUES
 
 
 -- ==================== 影院-厅型关联 ====================
-INSERT INTO cinema_hall_type_rel (cinema_id, hall_type_id) VALUES
+INSERT INTO venue_hall_type_rel (venue_id, hall_type_id) VALUES
 (1,1),(1,2), (2,2), (3,1),(3,3), (4,1),(4,3),(4,6),
 (5,1),(5,4), (6,5), (7,2),(7,5), (8,5),
 (9,1),(9,2),(9,4), (10,2),(10,5), (11,2), (12,1),
@@ -426,7 +426,7 @@ INSERT INTO cinema_hall_type_rel (cinema_id, hall_type_id) VALUES
 
 
 -- ==================== 场次数据 ====================
-INSERT INTO movie_schedule (id, movie_id, cinema_id, hall_name, show_date, show_time, end_time, lang, total_seats, available_seats, price, status) VALUES
+INSERT INTO activity_session (id, activity_id, venue_id, hall_name, show_date, show_time, end_time, lang, total_seats, available_seats, price, status) VALUES
 (1,  1, 1, 'IMAX厅',    CURDATE(), '10:00', '12:08', '国语',  200, 180, 59.90, 1),
 (2,  1, 1, '杜比全景声厅', CURDATE(), '13:30', '15:38', '国语',  150, 120, 49.90, 1),
 (3,  1, 1, '3号厅',      CURDATE(), '16:00', '18:08', '国语',  100,  85, 39.90, 1),
@@ -470,7 +470,7 @@ INSERT INTO movie_schedule (id, movie_id, cinema_id, hall_name, show_date, show_
 
 
 -- ==================== 影院影厅座位布局 ====================
-INSERT INTO cinema_hall (id, cinema_id, hall_name, seat_rows, seat_cols, aisle_after_col, couple_rows, disabled_seats, hall_type) VALUES
+INSERT INTO venue_hall (id, venue_id, hall_name, seat_rows, seat_cols, aisle_after_col, couple_rows, disabled_seats, hall_type) VALUES
 (1,  1, 'IMAX厅',       10, 20, '4,16', '10', '[[1,1],[1,20],[10,1],[10,20]]', 'IMAX'),
 (2,  1, '杜比全景声厅',   8, 14, '3,11', '',   '[]', '杜比全景声'),
 (3,  1, '3号厅',          8, 12, '3,9',  '',   '[]', '普通厅'),

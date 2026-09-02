@@ -23,16 +23,16 @@ public class CinemaSqlProvider {
     public String selectCinemaList(CinemaQueryDTO query) {
         SQL sql = new SQL();
         sql.SELECT_DISTINCT("c.*");
-        sql.FROM("cinema c");
+        sql.FROM("venue c");
 
         // 服务类型过滤 — 通过关联表 JOIN
         if (query.getServiceId() != null && query.getServiceId() > 0) {
-            sql.JOIN("cinema_service_rel csr ON c.id = csr.cinema_id AND csr.service_id = #{serviceId}");
+            sql.JOIN("venue_service_rel csr ON c.id = csr.venue_id AND csr.service_id = #{serviceId}");
         }
 
         // 厅型过滤 — 通过关联表 JOIN
         if (query.getHallType() != null && query.getHallType() > 0) {
-            sql.JOIN("cinema_hall_type_rel chr ON c.id = chr.cinema_id AND chr.hall_type_id = #{hallType}");
+            sql.JOIN("venue_hall_type_rel chr ON c.id = chr.venue_id AND chr.hall_type_id = #{hallType}");
         }
 
         // 基础条件

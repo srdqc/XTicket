@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 public class CinemaService {
 
     @Resource
-    private CinemaMapper cinemaMapper;
+    private VenueMapper venueMapper;
     @Resource
     private CinemaBrandMapper brandMapper;
     @Resource
@@ -56,7 +56,7 @@ public class CinemaService {
             query.setOffset(0);
         }
 
-        List<CinemaPO> poList = cinemaMapper.selectCinemaList(query);
+        List<VenuePO> poList = venueMapper.selectCinemaList(query);
         return poList.stream().map(this::toVO).toList();
     }
 
@@ -108,7 +108,7 @@ public class CinemaService {
      * 搜索影院
      */
     public List<CinemaVO> searchCinemas(String keyword, Long cityId) {
-        return cinemaMapper.searchByKeyword(keyword, cityId).stream()
+        return venueMapper.searchByKeyword(keyword, cityId).stream()
                 .map(this::toVO)
                 .toList();
     }
@@ -180,7 +180,7 @@ public class CinemaService {
     /**
      * PO → VO
      */
-    private CinemaVO toVO(CinemaPO po) {
+    private CinemaVO toVO(VenuePO po) {
         CinemaVO vo = new CinemaVO();
         vo.setId(po.getId());
         vo.setNm(po.getNm());

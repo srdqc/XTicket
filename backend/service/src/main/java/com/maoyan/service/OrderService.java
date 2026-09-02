@@ -5,7 +5,7 @@ import com.maoyan.common.constants.CacheConstants;
 import com.maoyan.common.constants.MQConstants;
 import com.maoyan.dao.mapper.OrderMapper;
 import com.maoyan.dao.mapper.OrderSeatMapper;
-import com.maoyan.dao.mapper.ScheduleMapper;
+import com.maoyan.dao.mapper.ActivitySessionMapper;
 import com.maoyan.dao.mapper.SeatLockMapper;
 import com.maoyan.domain.enums.OrderStatusEnum;
 import com.maoyan.domain.enums.ResponseCodeEnum;
@@ -15,7 +15,7 @@ import com.maoyan.domain.model.dto.LockSeatsDTO;
 import com.maoyan.domain.model.dto.OrderSnapshotSourceDTO;
 import com.maoyan.domain.model.event.OrderEvent;
 import com.maoyan.domain.model.po.OrderPO;
-import com.maoyan.domain.model.po.SchedulePO;
+import com.maoyan.domain.model.po.ActivitySessionPO;
 import com.maoyan.domain.model.po.SeatLockPO;
 import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
@@ -47,7 +47,7 @@ import java.util.stream.Collectors;
 public class OrderService {
 
     private final OrderMapper orderMapper;
-    private final ScheduleMapper scheduleMapper;
+    private final ActivitySessionMapper activitySessionMapper;
     private final SeatLockMapper seatLockMapper;
     private final OrderSeatMapper orderSeatMapper;
     private final StockService stockService;
@@ -99,7 +99,7 @@ public class OrderService {
         int seatCount = dto.getSeatCount();
         LocalDateTime now = LocalDateTime.now();
 
-        SchedulePO schedule = scheduleMapper.selectById(scheduleId);
+        ActivitySessionPO schedule = activitySessionMapper.selectById(scheduleId);
         if (schedule == null || schedule.getDeleted() == 1 || schedule.getStatus() != 1) {
             throw new BizException(ResponseCodeEnum.NOT_FOUND.getCode(), "场次不存在或已停售");
         }
@@ -129,7 +129,7 @@ public class OrderService {
         }
 
         try {
-            int affected = scheduleMapper.deductStock(scheduleId, seatCount, snapshot.getVersion());
+            int affected = activitySessionMapper.deductStock(scheduleId, seatCount, snapshot.getVersion());
             if (affected == 0) {
                 throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "库存扣减失败，请重新下单");
             }
@@ -166,7 +166,7 @@ public class OrderService {
         }
     }
 
-    private String lockSeatsForOrder(Long userId, SchedulePO schedule, CreateOrderDTO dto, LocalDateTime now) {
+    private String lockSeatsForOrder(Long userId, ActivitySessionPO schedule, CreateOrderDTO dto, LocalDateTime now) {
         List<LockSeatsDTO.SeatPos> seats = dto.getSeats();
         if (seats == null || seats.isEmpty()) {
             throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "请选择座位");
@@ -296,7 +296,7 @@ public class OrderService {
     }
 
     private OrderSnapshotSourceDTO loadOrderSnapshotSource(Long scheduleId) {
-        OrderSnapshotSourceDTO snapshot = scheduleMapper.selectOrderSnapshotSource(scheduleId);
+        OrderSnapshotSourceDTO snapshot = activitySessionMapper.selectOrderSnapshotSource(scheduleId);
         if (snapshot == null || snapshot.getStatus() == null || snapshot.getStatus() != 1) {
             throw new BizException(ResponseCodeEnum.NOT_FOUND.getCode(), "场次不存在或已停售");
         }
@@ -412,7 +412,7 @@ public class OrderService {
 
     private void refreshScheduleDetailCache(Long scheduleId) {
         try {
-            SchedulePO schedule = scheduleMapper.selectById(scheduleId);
+            ActivitySessionPO schedule = activitySessionMapper.selectById(scheduleId);
             if (schedule != null) {
                 stockService.initScheduleDetail(schedule);
             }

@@ -1,7 +1,7 @@
 package com.maoyan.service.infrastructure;
 
 import com.maoyan.common.constants.CacheConstants;
-import com.maoyan.domain.model.po.SchedulePO;
+import com.maoyan.domain.model.po.ActivitySessionPO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -182,18 +182,18 @@ public class StockService {
     }
 
     /**
-     * 从 Redis 缓存读取场次信息，构造 SchedulePO 返回
+     * 从 Redis 缓存读取场次信息，构造 ActivitySessionPO 返回
      *
-     * @return 缓存命中返回 SchedulePO（version 字段可用）；未命中返回 null
+     * @return 缓存命中返回 ActivitySessionPO（version 字段可用）；未命中返回 null
      */
-    public SchedulePO getScheduleFromCache(Long scheduleId) {
+    public ActivitySessionPO getScheduleFromCache(Long scheduleId) {
         Map<Object, Object> fields = getScheduleDetail(scheduleId);
         if (fields == null) return null;
         try {
-            SchedulePO po = new SchedulePO();
+            ActivitySessionPO po = new ActivitySessionPO();
             po.setId(scheduleId);
-            po.setMovieId(parseLong(fields.get("movieId")));
-            po.setCinemaId(parseLong(fields.get("cinemaId")));
+            po.setActivityId(parseLong(fields.get("movieId")));
+            po.setVenueId(parseLong(fields.get("cinemaId")));
             po.setHallName((String) fields.get("hallName"));
             po.setShowDate((String) fields.get("showDate"));
             po.setShowTime((String) fields.get("showTime"));
@@ -211,11 +211,13 @@ public class StockService {
     }
 
     /**
-     * 将 SchedulePO 写入 Redis Hash 缓存
+     * 将 ActivitySessionPO 写入 Redis Hash 缓存。
+     *
+     * <p>Redis hash 字段名暂时保留 movieId/cinemaId，以兼容 Phase 3B 之前的上层调用。</p>
      */
-    public void initScheduleDetail(SchedulePO schedule) {
+    public void initScheduleDetail(ActivitySessionPO schedule) {
         initScheduleDetail(
-                schedule.getId(), schedule.getMovieId(), schedule.getCinemaId(),
+                schedule.getId(), schedule.getActivityId(), schedule.getVenueId(),
                 schedule.getHallName(), schedule.getShowDate(), schedule.getShowTime(),
                 schedule.getEndTime(), schedule.getLang(), schedule.getTotalSeats(),
                 schedule.getAvailableSeats(), schedule.getPrice(),

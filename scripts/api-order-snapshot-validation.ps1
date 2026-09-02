@@ -67,11 +67,11 @@ function Invoke-DbRows {
     param([string]$Sql)
     $lines = @(Invoke-DbLines $Sql)
     if ($lines.Count -eq 0) { return @() }
-    $headers = $lines[0] -split "`t", -1
+    $headers = $lines[0] -split "`t"
     $rows = @()
     for ($i = 1; $i -lt $lines.Count; $i++) {
         if ([string]::IsNullOrWhiteSpace($lines[$i])) { continue }
-        $values = $lines[$i] -split "`t", -1
+        $values = $lines[$i] -split "`t"
         $obj = [ordered]@{}
         for ($j = 0; $j -lt $headers.Count; $j++) {
             $value = if ($j -lt $values.Count) { $values[$j] } else { $null }
@@ -86,7 +86,7 @@ function Invoke-DbScalar {
     param([string]$Sql)
     $lines = @(Invoke-DbLines $Sql -NoHeader)
     if ($lines.Count -eq 0) { return $null }
-    return Convert-DbValue (($lines[0] -split "`t", -1)[0])
+    return Convert-DbValue (($lines[0] -split "`t")[0])
 }
 
 function Invoke-DbExec {
@@ -200,38 +200,44 @@ function New-TestUser {
 function Select-Schedule {
     param([int]$MinStock = 20)
     $sql = @"
-SELECT ms.id AS schedule_id, ms.movie_id, m.nm AS movie_name, ms.cinema_id, c.nm AS cinema_name,
+SELECT ms.id AS schedule_id, ms.activity_id AS movie_id, m.nm AS movie_name, ms.venue_id AS cinema_id, c.nm AS cinema_name,
        ms.hall_name, ms.show_date, ms.show_time, ms.price AS unit_price,
        ms.available_seats, ms.version, COUNT(sl.id) AS lock_rows
-FROM movie_schedule ms
-JOIN movie m ON ms.movie_id = m.id AND m.deleted = 0
-JOIN cinema c ON ms.cinema_id = c.id AND c.deleted = 0
+FROM activity_session ms
+JOIN activity m ON ms.activity_id = m.id AND m.deleted = 0
+JOIN venue c ON ms.venue_id = c.id AND c.deleted = 0
 LEFT JOIN seat_lock sl ON sl.schedule_id = ms.id
 WHERE ms.status = 1 AND ms.deleted = 0 AND ms.available_seats >= $MinStock
-GROUP BY ms.id, ms.movie_id, m.nm, ms.cinema_id, c.nm, ms.hall_name, ms.show_date, ms.show_time,
+GROUP BY ms.id, ms.activity_id, m.nm, ms.venue_id, c.nm, ms.hall_name, ms.show_date, ms.show_time,
          ms.price, ms.available_seats, ms.version
 ORDER BY lock_rows ASC, ms.available_seats DESC, ms.show_date, ms.show_time, ms.id
 LIMIT 1
 "@
     $rows = @(Invoke-DbRows $sql)
     if ($rows.Count -eq 0) { throw "No salable schedule found" }
-    return $rows[0]
+    foreach ($row in $rows) {
+        if ($row.PSObject.Properties["schedule_id"]) { return $row }
+    }
+    throw "No valid salable schedule row found"
 }
 
 function Get-ScheduleSource {
     param([long]$ScheduleId)
     $rows = @(Invoke-DbRows @"
-SELECT ms.id AS schedule_id, ms.movie_id, m.nm AS movie_name, ms.cinema_id, c.nm AS cinema_name,
+SELECT ms.id AS schedule_id, ms.activity_id AS movie_id, m.nm AS movie_name, ms.venue_id AS cinema_id, c.nm AS cinema_name,
        ms.hall_name, ms.show_date, ms.show_time, ms.price AS unit_price,
        ms.available_seats, ms.version
-FROM movie_schedule ms
-LEFT JOIN movie m ON ms.movie_id = m.id AND m.deleted = 0
-LEFT JOIN cinema c ON ms.cinema_id = c.id AND c.deleted = 0
+FROM activity_session ms
+LEFT JOIN activity m ON ms.activity_id = m.id AND m.deleted = 0
+LEFT JOIN venue c ON ms.venue_id = c.id AND c.deleted = 0
 WHERE ms.id = $ScheduleId AND ms.deleted = 0
 LIMIT 1
 "@)
     if ($rows.Count -eq 0) { return $null }
-    return $rows[0]
+    foreach ($row in $rows) {
+        if ($row.PSObject.Properties["schedule_id"]) { return $row }
+    }
+    return $null
 }
 
 function Get-OrderSnapshot {
@@ -401,18 +407,18 @@ function Set-BaseNames {
     $movieName = "Phase2A Movie $Suffix"
     $cinemaName = "Phase2A Cinema $Suffix"
     $hallName = "Phase2A Hall $Suffix"
-    Invoke-DbExec "UPDATE movie SET nm = '$(Escape-Sql $movieName)', update_time = CURRENT_TIMESTAMP WHERE id = $($Source.movie_id)"
-    Invoke-DbExec "UPDATE cinema SET nm = '$(Escape-Sql $cinemaName)', update_time = CURRENT_TIMESTAMP WHERE id = $($Source.cinema_id)"
-    Invoke-DbExec "UPDATE movie_schedule SET hall_name = '$(Escape-Sql $hallName)', update_time = CURRENT_TIMESTAMP WHERE id = $($Source.schedule_id)"
+    Invoke-DbExec "UPDATE activity SET nm = '$(Escape-Sql $movieName)', update_time = CURRENT_TIMESTAMP WHERE id = $($Source.movie_id)"
+    Invoke-DbExec "UPDATE venue SET nm = '$(Escape-Sql $cinemaName)', update_time = CURRENT_TIMESTAMP WHERE id = $($Source.cinema_id)"
+    Invoke-DbExec "UPDATE activity_session SET hall_name = '$(Escape-Sql $hallName)', update_time = CURRENT_TIMESTAMP WHERE id = $($Source.schedule_id)"
     return [pscustomobject]@{ movieName = $movieName; cinemaName = $cinemaName; hallName = $hallName }
 }
 
 function Restore-BaseNames {
     param($Source)
     if ($null -eq $Source) { return }
-    Invoke-DbExec "UPDATE movie SET nm = '$(Escape-Sql ([string]$Source.movie_name))', update_time = CURRENT_TIMESTAMP WHERE id = $($Source.movie_id)"
-    Invoke-DbExec "UPDATE cinema SET nm = '$(Escape-Sql ([string]$Source.cinema_name))', update_time = CURRENT_TIMESTAMP WHERE id = $($Source.cinema_id)"
-    Invoke-DbExec "UPDATE movie_schedule SET hall_name = '$(Escape-Sql ([string]$Source.hall_name))', update_time = CURRENT_TIMESTAMP WHERE id = $($Source.schedule_id)"
+    Invoke-DbExec "UPDATE activity SET nm = '$(Escape-Sql ([string]$Source.movie_name))', update_time = CURRENT_TIMESTAMP WHERE id = $($Source.movie_id)"
+    Invoke-DbExec "UPDATE venue SET nm = '$(Escape-Sql ([string]$Source.cinema_name))', update_time = CURRENT_TIMESTAMP WHERE id = $($Source.cinema_id)"
+    Invoke-DbExec "UPDATE activity_session SET hall_name = '$(Escape-Sql ([string]$Source.hall_name))', update_time = CURRENT_TIMESTAMP WHERE id = $($Source.schedule_id)"
 }
 
 function Test-SnapshotComplete {

@@ -11,35 +11,35 @@ import lombok.EqualsAndHashCode;
 import java.math.BigDecimal;
 
 /**
- * 场次持久化对象（防超卖核心表）
+ * 活动场次持久化对象（防超卖核心表）
  *
  * <p>乐观锁版本号 {@link #version} 用于 DB 层面的最终库存扣减确认，
  * 配合 Redis Lua 脚本预扣库存，实现高并发下的防超卖。</p>
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("movie_schedule")
-public class SchedulePO extends BaseEntity {
+@TableName("activity_session")
+public class ActivitySessionPO extends BaseEntity {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 关联电影 */
-    private Long movieId;
+    /** 关联活动 */
+    private Long activityId;
 
-    /** 关联影院 */
-    private Long cinemaId;
+    /** 关联场馆 */
+    private Long venueId;
 
-    /** 影厅名称 */
+    /** 会场名称 */
     private String hallName;
 
-    /** 放映日期 */
+    /** 场次日期 */
     private String showDate;
 
-    /** 放映时间 HH:mm */
+    /** 开始时间 HH:mm */
     private String showTime;
 
-    /** 散场时间 */
+    /** 结束时间 */
     private String endTime;
 
     /** 语言版本 */

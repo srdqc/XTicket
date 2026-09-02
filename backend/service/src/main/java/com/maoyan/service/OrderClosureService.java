@@ -2,12 +2,12 @@ package com.maoyan.service;
 
 import com.maoyan.common.constants.MQConstants;
 import com.maoyan.dao.mapper.OrderMapper;
-import com.maoyan.dao.mapper.ScheduleMapper;
+import com.maoyan.dao.mapper.ActivitySessionMapper;
 import com.maoyan.dao.mapper.SeatLockMapper;
 import com.maoyan.domain.enums.OrderStatusEnum;
 import com.maoyan.domain.model.event.OrderEvent;
 import com.maoyan.domain.model.po.OrderPO;
-import com.maoyan.domain.model.po.SchedulePO;
+import com.maoyan.domain.model.po.ActivitySessionPO;
 import com.maoyan.service.infrastructure.StockService;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,7 @@ import java.time.LocalDateTime;
 public class OrderClosureService {
 
     private final OrderMapper orderMapper;
-    private final ScheduleMapper scheduleMapper;
+    private final ActivitySessionMapper activitySessionMapper;
     private final SeatLockMapper seatLockMapper;
     private final StockService stockService;
     private final PlatformTransactionManager transactionManager;
@@ -71,7 +71,7 @@ public class OrderClosureService {
                 return CloseResult.skipped(latest != null ? latest : order);
             }
 
-            int dbStockRows = scheduleMapper.rollbackStock(order.getScheduleId(), order.getSeatCount());
+            int dbStockRows = activitySessionMapper.rollbackStock(order.getScheduleId(), order.getSeatCount());
             int releasedLocks = seatLockMapper.releaseOrderLocks(orderNo);
             order.setStatus(OrderStatusEnum.CANCELLED.getCode());
             order.setCancelTime(now);
@@ -95,7 +95,7 @@ public class OrderClosureService {
 
     private void refreshScheduleDetailCache(Long scheduleId) {
         try {
-            SchedulePO schedule = scheduleMapper.selectById(scheduleId);
+            ActivitySessionPO schedule = activitySessionMapper.selectById(scheduleId);
             if (schedule != null) {
                 stockService.initScheduleDetail(schedule);
             }

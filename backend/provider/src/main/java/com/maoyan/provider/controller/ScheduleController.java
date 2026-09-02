@@ -3,7 +3,7 @@ package com.maoyan.provider.controller;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.maoyan.common.annotation.RateLimit;
-import com.maoyan.domain.model.po.CinemaPO;
+import com.maoyan.domain.model.po.VenuePO;
 import com.maoyan.domain.model.vo.MovieVO;
 import com.maoyan.domain.model.vo.Result;
 import com.maoyan.domain.model.vo.ScheduleVO;
@@ -64,7 +64,7 @@ public class ScheduleController {
      */
     @GetMapping("/cinemaDetail")
     public Result<Map<String, Object>> getCinemaDetail(@RequestParam Long cinemaId) {
-        CinemaPO cinema = scheduleService.getCinemaById(cinemaId);
+        VenuePO cinema = scheduleService.getCinemaById(cinemaId);
         if (cinema == null) {
             return Result.ok(Collections.emptyMap());
         }

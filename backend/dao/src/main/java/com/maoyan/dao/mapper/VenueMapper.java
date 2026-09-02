@@ -1,7 +1,7 @@
 package com.maoyan.dao.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.maoyan.domain.model.po.CinemaPO;
+import com.maoyan.domain.model.po.VenuePO;
 import com.maoyan.dao.provider.CinemaSqlProvider;
 import com.maoyan.domain.model.dto.CinemaQueryDTO;
 import org.apache.ibatis.annotations.Mapper;
@@ -12,22 +12,24 @@ import org.apache.ibatis.annotations.SelectProvider;
 import java.util.List;
 
 /**
- * 影院 Mapper
+ * 场馆 Mapper。
+ *
+ * <p>Phase 3A 已切换到底层 venue 表，上层 cinema API 暂时兼容。</p>
  */
 @Mapper
-public interface CinemaMapper extends BaseMapper<CinemaPO> {
+public interface VenueMapper extends BaseMapper<VenuePO> {
 
     /**
      * 根据复合条件查询影院列表（支持品牌/服务/厅型/商圈多维过滤）
      */
     @SelectProvider(type = CinemaSqlProvider.class, method = "selectCinemaList")
-    List<CinemaPO> selectCinemaList(CinemaQueryDTO query);
+    List<VenuePO> selectCinemaList(CinemaQueryDTO query);
 
     /**
      * 搜索影院 (模糊匹配名称/地址)
      */
     @Select("""
-        SELECT * FROM cinema 
+        SELECT * FROM venue
         WHERE deleted = 0 
           AND city_id = #{cityId}
           AND (nm LIKE CONCAT('%', #{kw}, '%') 
@@ -35,5 +37,5 @@ public interface CinemaMapper extends BaseMapper<CinemaPO> {
         ORDER BY sort_order, id
         LIMIT 20
     """)
-    List<CinemaPO> searchByKeyword(@Param("kw") String keyword, @Param("cityId") Long cityId);
+    List<VenuePO> searchByKeyword(@Param("kw") String keyword, @Param("cityId") Long cityId);
 }

@@ -2,8 +2,8 @@
 -- 猫眼后端 - 数据库表结构 (H2 MySQL 兼容模式)
 -- =====================================================
 
--- 电影表
-CREATE TABLE IF NOT EXISTS movie (
+-- 活动表（Phase 3A 底层事实源，部分电影兼容字段暂留）
+CREATE TABLE IF NOT EXISTS activity (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     nm              VARCHAR(200)  NOT NULL        COMMENT '电影名',
     enm             VARCHAR(200)                  COMMENT '英文名',
@@ -38,8 +38,8 @@ CREATE TABLE IF NOT EXISTS city (
     py  VARCHAR(100)                      COMMENT '拼音'
 );
 
--- 影院表
-CREATE TABLE IF NOT EXISTS cinema (
+-- 场馆表（Phase 3A 底层事实源，部分影院兼容字段暂留）
+CREATE TABLE IF NOT EXISTS venue (
     id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
     nm                  VARCHAR(200) NOT NULL  COMMENT '影院名称',
     addr                VARCHAR(500)           COMMENT '地址',
@@ -99,18 +99,18 @@ CREATE TABLE IF NOT EXISTS hall_type (
     count INT DEFAULT 0
 );
 
--- 影院-服务关联表
-CREATE TABLE IF NOT EXISTS cinema_service_rel (
-    cinema_id  BIGINT NOT NULL,
+-- 场馆-服务关联表
+CREATE TABLE IF NOT EXISTS venue_service_rel (
+    venue_id   BIGINT NOT NULL,
     service_id BIGINT NOT NULL,
-    PRIMARY KEY (cinema_id, service_id)
+    PRIMARY KEY (venue_id, service_id)
 );
 
--- 影院-厅型关联表
-CREATE TABLE IF NOT EXISTS cinema_hall_type_rel (
-    cinema_id    BIGINT NOT NULL,
+-- 场馆-厅型关联表
+CREATE TABLE IF NOT EXISTS venue_hall_type_rel (
+    venue_id     BIGINT NOT NULL,
     hall_type_id BIGINT NOT NULL,
-    PRIMARY KEY (cinema_id, hall_type_id)
+    PRIMARY KEY (venue_id, hall_type_id)
 );
 
 -- 用户表
@@ -126,11 +126,11 @@ CREATE TABLE IF NOT EXISTS sys_user (
     deleted        INT DEFAULT 0
 );
 
--- 场次表（防超卖核心场景）
-CREATE TABLE IF NOT EXISTS movie_schedule (
+-- 活动场次表（防超卖核心场景）
+CREATE TABLE IF NOT EXISTS activity_session (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-    movie_id        BIGINT        NOT NULL      COMMENT '关联电影',
-    cinema_id       BIGINT        NOT NULL      COMMENT '关联影院',
+    activity_id     BIGINT        NOT NULL      COMMENT '关联活动',
+    venue_id        BIGINT        NOT NULL      COMMENT '关联场馆',
     hall_name       VARCHAR(50)                 COMMENT '影厅名称',
     show_date       DATE          NOT NULL      COMMENT '放映日期',
     show_time       VARCHAR(10)   NOT NULL      COMMENT '放映时间 HH:mm',
@@ -185,17 +185,17 @@ CREATE TABLE IF NOT EXISTS payment_record (
 );
 
 -- 用户想看记录表
-CREATE TABLE IF NOT EXISTS user_wish (
+CREATE TABLE IF NOT EXISTS activity_follow (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id         BIGINT        NOT NULL      COMMENT '用户ID',
-    movie_id        BIGINT        NOT NULL      COMMENT '电影ID',
+    activity_id     BIGINT        NOT NULL      COMMENT '活动ID',
     create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
 );
 
--- 影院影厅座位布局表（物理座位图：行列+过道+情侣座）
-CREATE TABLE IF NOT EXISTS cinema_hall (
+-- 场馆会场座位布局表（物理座位图：行列+过道+情侣座）
+CREATE TABLE IF NOT EXISTS venue_hall (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-    cinema_id       BIGINT        NOT NULL      COMMENT '关联影院',
+    venue_id        BIGINT        NOT NULL      COMMENT '关联场馆',
     hall_name       VARCHAR(50)   NOT NULL      COMMENT '影厅名称',
     seat_rows       INT           NOT NULL DEFAULT 10  COMMENT '座位行数',
     seat_cols       INT           NOT NULL DEFAULT 14  COMMENT '座位列数',
@@ -236,24 +236,24 @@ CREATE TABLE IF NOT EXISTS order_seat (
 );
 
 -- ==================== 索引 ====================
-CREATE INDEX IF NOT EXISTS idx_movie_status ON movie(movie_status, deleted, sort_order);
-CREATE INDEX IF NOT EXISTS idx_movie_wish   ON movie(wish DESC);
-CREATE INDEX IF NOT EXISTS idx_cinema_city  ON cinema(city_id, deleted, sort_order);
-CREATE INDEX IF NOT EXISTS idx_cinema_brand ON cinema(brand_id);
+CREATE INDEX IF NOT EXISTS idx_activity_status ON activity(movie_status, deleted, sort_order);
+CREATE INDEX IF NOT EXISTS idx_activity_wish   ON activity(wish DESC);
+CREATE INDEX IF NOT EXISTS idx_venue_city  ON venue(city_id, deleted, sort_order);
+CREATE INDEX IF NOT EXISTS idx_venue_brand ON venue(brand_id);
 CREATE INDEX IF NOT EXISTS idx_district_city ON district(city_id, parent_id);
 CREATE INDEX IF NOT EXISTS idx_subway_city  ON subway(city_id, parent_id);
 CREATE INDEX IF NOT EXISTS idx_user_account ON sys_user(account);
-CREATE INDEX IF NOT EXISTS idx_schedule_movie ON movie_schedule(movie_id, show_date, deleted);
-CREATE INDEX IF NOT EXISTS idx_schedule_cinema ON movie_schedule(cinema_id, show_date, deleted);
+CREATE INDEX IF NOT EXISTS idx_session_activity ON activity_session(activity_id, show_date, deleted);
+CREATE INDEX IF NOT EXISTS idx_session_venue ON activity_session(venue_id, show_date, deleted);
 CREATE INDEX IF NOT EXISTS idx_order_user   ON ticket_order(user_id, status, deleted);
 CREATE INDEX IF NOT EXISTS idx_order_status_expire ON ticket_order(status, expire_time);
 CREATE INDEX IF NOT EXISTS idx_order_no     ON ticket_order(order_no);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_ticket_order_lock_token ON ticket_order(lock_token);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_record_payment_no ON payment_record(payment_no);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_record_order_no ON payment_record(order_no);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_wish_unique ON user_wish(user_id, movie_id);
-CREATE INDEX IF NOT EXISTS idx_hall_cinema ON cinema_hall(cinema_id, deleted);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_hall_unique ON cinema_hall(cinema_id, hall_name, deleted);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_follow_unique ON activity_follow(user_id, activity_id);
+CREATE INDEX IF NOT EXISTS idx_hall_venue ON venue_hall(venue_id, deleted);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_hall_unique ON venue_hall(venue_id, hall_name, deleted);
 CREATE INDEX IF NOT EXISTS idx_seat_lock_schedule ON seat_lock(schedule_id, status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_seat_lock_unique ON seat_lock(schedule_id, row_num, col_num);
 CREATE INDEX IF NOT EXISTS idx_seat_lock_user ON seat_lock(user_id, status);
@@ -262,4 +262,4 @@ CREATE INDEX IF NOT EXISTS idx_seat_lock_expire ON seat_lock(lock_until, status)
 CREATE INDEX IF NOT EXISTS idx_order_seat_order ON order_seat(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_seat_schedule ON order_seat(schedule_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_order_seat_unique ON order_seat(schedule_id, row_num, col_num);
-CREATE INDEX IF NOT EXISTS idx_movie_year ON movie(release_year, movie_status, deleted);
+CREATE INDEX IF NOT EXISTS idx_activity_year ON activity(release_year, movie_status, deleted);

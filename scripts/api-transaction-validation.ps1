@@ -350,7 +350,7 @@ function Find-DbConnection {
         foreach ($db in $candidates) {
             $script:JdbcUrl = "jdbc:mysql://127.0.0.1:3306/$db" + "?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&connectTimeout=3000&socketTimeout=8000"
             try {
-                $probe = Invoke-Db "SELECT COUNT(*) AS cnt FROM movie_schedule"
+                $probe = Invoke-Db "SELECT COUNT(*) AS cnt FROM activity_session"
                 $script:DbName = $db
                 $script:DbCredentialLabel = $cred.label
                 return [pscustomobject]@{ ok = $true; database = $db; count = @($probe)[0].cnt; credential = $cred.label; error = $null }
@@ -407,7 +407,7 @@ function Find-RedisConnection {
 
 function Get-Stock {
     param([long]$ScheduleId)
-    $db = Try-Db "SELECT id, available_seats, version, price FROM movie_schedule WHERE id = $ScheduleId"
+    $db = Try-Db "SELECT id, available_seats, version, price FROM activity_session WHERE id = $ScheduleId"
     $redisStock = Invoke-Redis -CommandArgs @("GET", "schedule:stock:$ScheduleId")
     $redisDetail = Invoke-Redis -CommandArgs @("HGETALL", "schedule:detail:$ScheduleId")
     $dirty = Invoke-Redis -CommandArgs @("HGET", "stock:dirty:rollback", "$ScheduleId")
@@ -473,7 +473,7 @@ function New-TestUser {
 function Select-Schedule {
     $sql = @"
 SELECT ms.id, ms.available_seats, ms.price, COUNT(sl.id) AS lock_rows
-FROM movie_schedule ms
+FROM activity_session ms
 LEFT JOIN seat_lock sl ON sl.schedule_id = ms.id
 WHERE ms.status = 1 AND ms.deleted = 0 AND ms.available_seats >= 20
   AND TIMESTAMP(ms.show_date, STR_TO_DATE(ms.show_time, '%H:%i')) > NOW()
@@ -483,7 +483,7 @@ LIMIT 1
 "@
     $rows = @(Invoke-Db $sql)
     if ($rows.Count -eq 0) {
-        $rows = @(Invoke-Db "SELECT ms.id, ms.available_seats, ms.price, COUNT(sl.id) AS lock_rows FROM movie_schedule ms LEFT JOIN seat_lock sl ON sl.schedule_id = ms.id WHERE ms.status = 1 AND ms.deleted = 0 AND ms.available_seats >= 20 GROUP BY ms.id, ms.available_seats, ms.price ORDER BY lock_rows ASC, ms.available_seats DESC, ms.id LIMIT 1")
+        $rows = @(Invoke-Db "SELECT ms.id, ms.available_seats, ms.price, COUNT(sl.id) AS lock_rows FROM activity_session ms LEFT JOIN seat_lock sl ON sl.schedule_id = ms.id WHERE ms.status = 1 AND ms.deleted = 0 AND ms.available_seats >= 20 GROUP BY ms.id, ms.available_seats, ms.price ORDER BY lock_rows ASC, ms.available_seats DESC, ms.id LIMIT 1")
     }
     if ($rows.Count -eq 0) { throw "No salable schedule found in local MySQL" }
     return $rows[0]

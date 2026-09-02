@@ -8,17 +8,19 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 /**
- * 影院持久化对象
+ * 场馆持久化对象。
+ *
+ * <p>Phase 3A 仅迁移底层事实源，部分影院字段暂时保留兼容。</p>
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("cinema")
-public class CinemaPO extends BaseEntity {
+@TableName("venue")
+public class VenuePO extends BaseEntity {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 影院名称 */
+    /** 场馆名称 */
     private String nm;
 
     /** 地址 */

@@ -44,11 +44,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SeatService {
 
-    private final CinemaHallMapper cinemaHallMapper;
+    private final VenueHallMapper venueHallMapper;
     private final SeatLockMapper seatLockMapper;
     private final OrderSeatMapper orderSeatMapper;
-    private final ScheduleMapper scheduleMapper;
-    private final CinemaMapper cinemaMapper;
+    private final ActivitySessionMapper activitySessionMapper;
     private final DistributedLockService lockService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -56,16 +55,16 @@ public class SeatService {
      * 获取座位布局 + 实时状态
      */
     public SeatLayoutVO getSeatLayout(Long scheduleId, Long userId) {
-        SchedulePO schedule = scheduleMapper.selectById(scheduleId);
+        ActivitySessionPO schedule = activitySessionMapper.selectById(scheduleId);
         if (schedule == null || schedule.getDeleted() == 1) {
             throw new BizException(ResponseCodeEnum.NOT_FOUND.getCode(), "场次不存在");
         }
 
         // 查找影厅布局
-        CinemaHallPO hall = cinemaHallMapper.selectByCinemaAndHall(schedule.getCinemaId(), schedule.getHallName());
+        VenueHallPO hall = venueHallMapper.selectByVenueAndHall(schedule.getVenueId(), schedule.getHallName());
         if (hall == null) {
             // 使用默认布局（10行14列，过道在3、11列后）
-            hall = buildDefaultHall(schedule.getCinemaId(), schedule.getHallName());
+            hall = buildDefaultHall(schedule.getVenueId(), schedule.getHallName());
         }
 
         return buildSeatLayout(hall, scheduleId, userId);
@@ -84,7 +83,7 @@ public class SeatService {
         // 分布式锁保护（等待3秒，持有10秒）
         Map<String, Object> result = lockService.executeWithBoundedLock(lockKey, 3, 12, () -> {
             // 1. 验证场次
-            SchedulePO schedule = scheduleMapper.selectById(scheduleId);
+            ActivitySessionPO schedule = activitySessionMapper.selectById(scheduleId);
             if (schedule == null || schedule.getStatus() != 1) {
                 throw new BizException(ResponseCodeEnum.NOT_FOUND.getCode(), "场次不存在或已停售");
             }
@@ -202,9 +201,9 @@ public class SeatService {
     /**
      * 构建默认影厅布局（无cinema_hall记录时使用）
      */
-    private CinemaHallPO buildDefaultHall(Long cinemaId, String hallName) {
-        CinemaHallPO hall = new CinemaHallPO();
-        hall.setCinemaId(cinemaId);
+    private VenueHallPO buildDefaultHall(Long cinemaId, String hallName) {
+        VenueHallPO hall = new VenueHallPO();
+        hall.setVenueId(cinemaId);
         hall.setHallName(hallName);
         hall.setSeatRows(8);
         hall.setSeatCols(12);
@@ -218,7 +217,7 @@ public class SeatService {
     /**
      * 构建座位布局VO（合并布局+锁定+已售状态）
      */
-    private SeatLayoutVO buildSeatLayout(CinemaHallPO hall, Long scheduleId, Long userId) {
+    private SeatLayoutVO buildSeatLayout(VenueHallPO hall, Long scheduleId, Long userId) {
         SeatLayoutVO vo = new SeatLayoutVO();
         vo.setHallName(hall.getHallName());
         vo.setHallType(hall.getHallType());

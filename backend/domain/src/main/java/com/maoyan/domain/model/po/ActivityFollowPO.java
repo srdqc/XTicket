@@ -9,18 +9,20 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 用户想看记录
+ * 用户活动关注记录。
+ *
+ * <p>旧 wish API 暂时保留，底层事实源已迁移为 activity_follow。</p>
  */
 @Data
-@TableName("user_wish")
-public class UserWishPO implements Serializable {
+@TableName("activity_follow")
+public class ActivityFollowPO implements Serializable {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
     private Long userId;
 
-    private Long movieId;
+    private Long activityId;
 
     private LocalDateTime createTime;
 }
