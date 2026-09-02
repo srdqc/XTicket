@@ -19,11 +19,11 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 影院原子服务
+ * 场馆原子服务
  */
 @Slf4j
 @Service
-public class CinemaService {
+public class VenueService {
 
     @Resource
     private VenueMapper venueMapper;
@@ -43,10 +43,10 @@ public class CinemaService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
-     * 查询影院列表（支持多维过滤 + 分页）
+     * 查询场馆列表（支持多维过滤 + 分页）
      */
-    public List<CinemaVO> getCinemaList(CinemaQueryDTO query) {
-        log.info("查询影院列表: cityId={}, offset={}, brandId={}, districtId={}",
+    public List<CinemaVO> getVenueList(CinemaQueryDTO query) {
+        log.info("查询场馆列表: cityId={}, offset={}, brandId={}, districtId={}",
                 query.getCityId(), query.getOffset(), query.getBrandId(), query.getDistrictId());
 
         if (query.getLimit() == null || query.getLimit() <= 0) {
@@ -61,12 +61,12 @@ public class CinemaService {
     }
 
     /**
-     * 获取影院筛选项（带缓存）
+     * 获取场馆筛选项（带缓存）
      */
     public Map<String, Object> getFilterOptions(Long cityId) {
         String cacheKey = CacheConstants.CINEMA_FILTER_PREFIX + cityId;
         return cacheService.get(cacheKey, () -> {
-            log.info("从数据库加载影院筛选项: cityId={}", cityId);
+            log.info("从数据库加载场馆筛选项: cityId={}", cityId);
             Map<String, Object> result = new LinkedHashMap<>();
 
             // 1. 品牌
@@ -105,9 +105,9 @@ public class CinemaService {
     }
 
     /**
-     * 搜索影院
+     * 搜索场馆
      */
-    public List<CinemaVO> searchCinemas(String keyword, Long cityId) {
+    public List<CinemaVO> searchVenues(String keyword, Long cityId) {
         return venueMapper.searchByKeyword(keyword, cityId).stream()
                 .map(this::toVO)
                 .toList();
@@ -199,7 +199,7 @@ public class CinemaService {
             try {
                 tag.setHallType(objectMapper.readValue(po.getHallTypesJson(), new TypeReference<>() {}));
             } catch (JsonProcessingException e) {
-                log.warn("解析影院厅型JSON失败, cinemaId={}", po.getId(), e);
+                log.warn("解析场馆厅型JSON失败, cinemaId={}", po.getId(), e);
                 tag.setHallType(Collections.emptyList());
             }
         } else {

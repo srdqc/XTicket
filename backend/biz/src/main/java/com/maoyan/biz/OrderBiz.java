@@ -3,9 +3,9 @@ package com.maoyan.biz;
 import com.maoyan.domain.model.dto.CreateOrderDTO;
 import com.maoyan.domain.model.po.ActivitySessionPO;
 import com.maoyan.domain.model.vo.OrderVO;
-import com.maoyan.service.MovieService;
+import com.maoyan.service.ActivityService;
+import com.maoyan.service.ActivitySessionService;
 import com.maoyan.service.OrderService;
-import com.maoyan.service.ScheduleService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -18,16 +18,16 @@ import java.util.List;
 public class OrderBiz {
 
     private final OrderService orderService;
-    private final ScheduleService scheduleService;
-    private final MovieService movieService;
+    private final ActivitySessionService activitySessionService;
+    private final ActivityService activityService;
 
     public OrderVO createOrder(Long userId, CreateOrderDTO dto) {
         OrderVO orderVO = orderService.createOrder(userId, dto);
 
         try {
-            ActivitySessionPO schedule = scheduleService.getById(dto.getScheduleId());
+            ActivitySessionPO schedule = activitySessionService.getSessionById(dto.getScheduleId());
             if (schedule != null) {
-                var movieDetail = movieService.getMovieDetail(schedule.getActivityId());
+                var movieDetail = activityService.getActivityDetail(schedule.getActivityId());
                 if (movieDetail != null) {
                     orderVO.setMovieName(movieDetail.getNm());
                     orderVO.setMovieImg(movieDetail.getImg());

@@ -2,7 +2,7 @@ package com.maoyan.biz.cinema;
 
 import com.maoyan.domain.model.dto.CinemaQueryDTO;
 import com.maoyan.domain.model.vo.CinemaVO;
-import com.maoyan.service.CinemaService;
+import com.maoyan.service.VenueService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -19,7 +19,7 @@ import java.util.Map;
 public class CinemaListBiz {
 
     @Resource
-    private CinemaService cinemaService;
+    private VenueService venueService;
 
     /**
      * 获取影院列表接口数据
@@ -27,7 +27,7 @@ public class CinemaListBiz {
      * @return { cinemas: CinemaVO[] }
      */
     public Map<String, Object> getCinemaListData(CinemaQueryDTO query) {
-        List<CinemaVO> cinemas = cinemaService.getCinemaList(query);
+        List<CinemaVO> cinemas = venueService.getVenueList(query);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("cinemas", cinemas);
@@ -41,6 +41,6 @@ public class CinemaListBiz {
      * @return { brand, hallType, service, district, subway }
      */
     public Map<String, Object> getFilterData(Long cityId) {
-        return cinemaService.getFilterOptions(cityId);
+        return venueService.getFilterOptions(cityId);
     }
 }

@@ -19,10 +19,10 @@ import java.util.Map;
 public class SearchService {
 
     @Resource
-    private MovieService movieService;
+    private ActivityService activityService;
 
     @Resource
-    private CinemaService cinemaService;
+    private VenueService venueService;
 
     /**
      * 综合搜索（电影 + 影院）
@@ -34,8 +34,8 @@ public class SearchService {
     public Map<String, Object> search(String keyword, Long cityId) {
         log.info("搜索: keyword={}, cityId={}", keyword, cityId);
 
-        List<MovieVO> movies = movieService.searchMovies(keyword);
-        List<CinemaVO> cinemas = cinemaService.searchCinemas(keyword, cityId);
+        List<MovieVO> movies = activityService.searchActivities(keyword);
+        List<CinemaVO> cinemas = venueService.searchVenues(keyword, cityId);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("movies", Map.of("list", movies));

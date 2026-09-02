@@ -2,7 +2,7 @@ package com.maoyan.provider.controller;
 
 import com.maoyan.biz.movie.MovieDetailBiz;
 import com.maoyan.biz.movie.MovieListBiz;
-import com.maoyan.service.MovieService;
+import com.maoyan.service.ActivityService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,7 +35,7 @@ public class MovieController {
     private MovieDetailBiz movieDetailBiz;
 
     @Resource
-    private MovieService movieService;
+    private ActivityService activityService;
 
     /**
      * 正在热映列表
@@ -95,6 +95,6 @@ public class MovieController {
             @RequestParam(defaultValue = "hot") String sortBy,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "30") int pageSize) {
-        return movieService.filterMovies(movieStatus, cat, src, year, sortBy, page, pageSize);
+        return activityService.filterActivities(movieStatus, cat, src, year, sortBy, page, pageSize);
     }
 }

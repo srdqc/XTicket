@@ -2,7 +2,7 @@ package com.maoyan.biz.movie;
 
 import com.maoyan.common.constants.CommonConstants;
 import com.maoyan.domain.model.vo.MovieVO;
-import com.maoyan.service.MovieService;
+import com.maoyan.service.ActivityService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -14,7 +14,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 /**
  * 电影列表业务编排
  * <p>
- * 组合 MovieService 的原子操作，编排电影列表相关的复杂业务逻辑。
+ * 组合 ActivityService 的原子操作，编排电影列表相关的复杂业务逻辑。
  * 使用线程池并行加载多个数据源，提升接口响应速度。
  * </p>
  */
@@ -23,7 +23,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 public class MovieListBiz {
 
     @Resource
-    private MovieService movieService;
+    private ActivityService activityService;
 
     @Resource(name = "bizTaskExecutor")
     private ThreadPoolExecutor bizTaskExecutor;
@@ -39,9 +39,9 @@ public class MovieListBiz {
     public Map<String, Object> getHotMovieListData() {
         // 并行加载电影列表和 ID 列表
         CompletableFuture<List<MovieVO>> moviesFuture =
-                CompletableFuture.supplyAsync(() -> movieService.getHotMovies(), bizTaskExecutor);
+                CompletableFuture.supplyAsync(() -> activityService.getHotActivities(), bizTaskExecutor);
         CompletableFuture<List<Long>> idsFuture =
-                CompletableFuture.supplyAsync(() -> movieService.getHotMovieIds(), bizTaskExecutor);
+                CompletableFuture.supplyAsync(() -> activityService.getHotActivityIds(), bizTaskExecutor);
 
         CompletableFuture.allOf(moviesFuture, idsFuture).join();
 
@@ -66,9 +66,9 @@ public class MovieListBiz {
      */
     public Map<String, Object> getComingListData() {
         CompletableFuture<List<MovieVO>> moviesFuture =
-                CompletableFuture.supplyAsync(() -> movieService.getComingMovies(), bizTaskExecutor);
+                CompletableFuture.supplyAsync(() -> activityService.getComingActivities(), bizTaskExecutor);
         CompletableFuture<List<Long>> idsFuture =
-                CompletableFuture.supplyAsync(() -> movieService.getComingMovieIds(), bizTaskExecutor);
+                CompletableFuture.supplyAsync(() -> activityService.getComingActivityIds(), bizTaskExecutor);
 
         CompletableFuture.allOf(moviesFuture, idsFuture).join();
 
@@ -91,7 +91,7 @@ public class MovieListBiz {
      * @return { coming: MovieVO[] }
      */
     public Map<String, Object> getMostExpectedData() {
-        List<MovieVO> movies = movieService.getMostExpected();
+        List<MovieVO> movies = activityService.getMostExpected();
         return Map.of("coming", movies);
     }
 
@@ -112,7 +112,7 @@ public class MovieListBiz {
                 .map(Long::parseLong)
                 .toList();
 
-        List<MovieVO> movies = movieService.getMoviesByIds(ids);
+        List<MovieVO> movies = activityService.getActivitiesByIds(ids);
         return Map.of("coming", movies);
     }
 }

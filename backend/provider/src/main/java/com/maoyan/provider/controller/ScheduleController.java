@@ -7,8 +7,8 @@ import com.maoyan.domain.model.po.VenuePO;
 import com.maoyan.domain.model.vo.MovieVO;
 import com.maoyan.domain.model.vo.Result;
 import com.maoyan.domain.model.vo.ScheduleVO;
-import com.maoyan.service.MovieService;
-import com.maoyan.service.ScheduleService;
+import com.maoyan.service.ActivityService;
+import com.maoyan.service.ActivitySessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -24,8 +24,8 @@ import java.util.*;
 @RequiredArgsConstructor
 public class ScheduleController {
 
-    private final ScheduleService scheduleService;
-    private final MovieService movieService;
+    private final ActivitySessionService activitySessionService;
+    private final ActivityService activityService;
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -36,7 +36,7 @@ public class ScheduleController {
     public Result<List<ScheduleVO>> getSchedules(
             @RequestParam Long movieId,
             @RequestParam(required = false) String showDate) {
-        return Result.ok(scheduleService.getSchedules(movieId, showDate));
+        return Result.ok(activitySessionService.getSessions(movieId, showDate));
     }
 
     /**
@@ -46,7 +46,7 @@ public class ScheduleController {
     public Result<List<Map<String, Object>>> getSchedulesByCinema(
             @RequestParam Long movieId,
             @RequestParam(required = false) String showDate) {
-        return Result.ok(scheduleService.getSchedulesByCinema(movieId, showDate));
+        return Result.ok(activitySessionService.getSessionsByVenue(movieId, showDate));
     }
 
     /**
@@ -54,7 +54,7 @@ public class ScheduleController {
      */
     @GetMapping("/availableDates")
     public Result<List<String>> getAvailableDates(@RequestParam Long movieId) {
-        return Result.ok(scheduleService.getAvailableDates(movieId));
+        return Result.ok(activitySessionService.getAvailableDates(movieId));
     }
 
     // ==================== 影院详情页 ====================
@@ -64,7 +64,7 @@ public class ScheduleController {
      */
     @GetMapping("/cinemaDetail")
     public Result<Map<String, Object>> getCinemaDetail(@RequestParam Long cinemaId) {
-        VenuePO cinema = scheduleService.getCinemaById(cinemaId);
+        VenuePO cinema = activitySessionService.getVenueById(cinemaId);
         if (cinema == null) {
             return Result.ok(Collections.emptyMap());
         }
@@ -94,11 +94,11 @@ public class ScheduleController {
      */
     @GetMapping("/cinemaMovies")
     public Result<List<MovieVO>> getCinemaMovies(@RequestParam Long cinemaId) {
-        List<Long> movieIds = scheduleService.getMovieIdsByCinema(cinemaId);
+        List<Long> movieIds = activitySessionService.getActivityIdsByVenue(cinemaId);
         if (movieIds.isEmpty()) {
             return Result.ok(Collections.emptyList());
         }
-        return Result.ok(movieService.getMoviesByIds(movieIds));
+        return Result.ok(activityService.getActivitiesByIds(movieIds));
     }
 
     /**
@@ -109,7 +109,7 @@ public class ScheduleController {
             @RequestParam Long cinemaId,
             @RequestParam Long movieId,
             @RequestParam(required = false) String showDate) {
-        return Result.ok(scheduleService.getCinemaSchedules(cinemaId, movieId, showDate));
+        return Result.ok(activitySessionService.getVenueActivitySessions(cinemaId, movieId, showDate));
     }
 
     /**
@@ -119,6 +119,6 @@ public class ScheduleController {
     public Result<List<String>> getCinemaAvailableDates(
             @RequestParam Long cinemaId,
             @RequestParam Long movieId) {
-        return Result.ok(scheduleService.getCinemaAvailableDates(cinemaId, movieId));
+        return Result.ok(activitySessionService.getVenueActivityAvailableDates(cinemaId, movieId));
     }
 }

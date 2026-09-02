@@ -1,7 +1,7 @@
 package com.maoyan.biz.movie;
 
 import com.maoyan.domain.model.vo.MovieVO;
-import com.maoyan.service.MovieService;
+import com.maoyan.service.ActivityService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -17,7 +17,7 @@ import java.util.Map;
 public class MovieDetailBiz {
 
     @Resource
-    private MovieService movieService;
+    private ActivityService activityService;
 
     /**
      * 获取电影详情页数据
@@ -31,7 +31,7 @@ public class MovieDetailBiz {
     public Map<String, Object> getMovieDetailData(Long movieId) {
         log.info("获取电影详情: movieId={}", movieId);
 
-        MovieVO movie = movieService.getMovieDetail(movieId);
+        MovieVO movie = activityService.getActivityDetail(movieId);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("detailMovie", movie);
