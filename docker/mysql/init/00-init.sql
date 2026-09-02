@@ -184,6 +184,22 @@ CREATE TABLE IF NOT EXISTS ticket_order (
     UNIQUE INDEX uq_ticket_order_lock_token (lock_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS payment_record (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    payment_no      VARCHAR(64)   NOT NULL      COMMENT '支付记录编号',
+    order_no        VARCHAR(64)   NOT NULL      COMMENT '订单编号',
+    user_id         BIGINT        NOT NULL      COMMENT '用户ID',
+    amount          DECIMAL(10,2) NOT NULL      COMMENT '支付金额',
+    channel         VARCHAR(32)   NOT NULL      COMMENT '支付渠道: MOCK_POINTS',
+    status          VARCHAR(20)   NOT NULL      COMMENT '支付状态: SUCCESS',
+    paid_at         TIMESTAMP     NOT NULL      COMMENT '支付成功时间',
+    create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted         INT           DEFAULT 0,
+    UNIQUE INDEX uq_payment_record_payment_no (payment_no),
+    UNIQUE INDEX uq_payment_record_order_no (order_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS user_wish (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id         BIGINT        NOT NULL      COMMENT '用户ID',
