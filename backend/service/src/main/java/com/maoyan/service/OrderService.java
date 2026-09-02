@@ -12,6 +12,7 @@ import com.maoyan.domain.enums.ResponseCodeEnum;
 import com.maoyan.domain.exception.BizException;
 import com.maoyan.domain.model.dto.CreateOrderDTO;
 import com.maoyan.domain.model.dto.LockSeatsDTO;
+import com.maoyan.domain.model.dto.OrderSnapshotSourceDTO;
 import com.maoyan.domain.model.event.OrderEvent;
 import com.maoyan.domain.model.po.OrderPO;
 import com.maoyan.domain.model.po.SchedulePO;
@@ -119,24 +120,22 @@ public class OrderService {
         List<SeatLockPO> lockedSeats = seatLockMapper.selectActiveLocksByTokenOnly(lockToken, now);
         validateUsableLockToken(userId, scheduleId, lockToken, requestedSeats, lockedSeats, seatCount);
 
+        OrderSnapshotSourceDTO snapshot = loadOrderSnapshotSource(scheduleId);
+        String seatsInfo = formatSeatsInfo(lockedSeats);
+
         long remaining = stockService.preDeduct(scheduleId, seatCount);
         if (remaining < 0) {
             throw new BizException(ResponseCodeEnum.STOCK_NOT_ENOUGH);
         }
 
         try {
-            SchedulePO latest = scheduleMapper.selectById(scheduleId);
-            if (latest == null || latest.getStatus() != 1 || latest.getDeleted() == 1) {
-                throw new BizException(ResponseCodeEnum.NOT_FOUND.getCode(), "场次不存在或已停售");
-            }
-
-            int affected = scheduleMapper.deductStock(scheduleId, seatCount, latest.getVersion());
+            int affected = scheduleMapper.deductStock(scheduleId, seatCount, snapshot.getVersion());
             if (affected == 0) {
                 throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "库存扣减失败，请重新下单");
             }
 
             String orderNo = generateOrderNo(userId);
-            OrderPO order = buildPendingOrder(userId, dto, latest, lockToken, orderNo, now);
+            OrderPO order = buildPendingOrder(userId, snapshot, lockToken, orderNo, now, seatCount, seatsInfo);
             orderMapper.insert(order);
 
             int bound = seatLockMapper.bindLocksToOrder(scheduleId, userId, lockToken, orderNo,
@@ -296,25 +295,57 @@ public class OrderService {
                 .collect(Collectors.toSet());
     }
 
-    private OrderPO buildPendingOrder(Long userId, CreateOrderDTO dto, SchedulePO schedule,
-                                      String lockToken, String orderNo, LocalDateTime now) {
-        int seatCount = dto.getSeatCount();
+    private OrderSnapshotSourceDTO loadOrderSnapshotSource(Long scheduleId) {
+        OrderSnapshotSourceDTO snapshot = scheduleMapper.selectOrderSnapshotSource(scheduleId);
+        if (snapshot == null || snapshot.getStatus() == null || snapshot.getStatus() != 1) {
+            throw new BizException(ResponseCodeEnum.NOT_FOUND.getCode(), "场次不存在或已停售");
+        }
+        if (isBlank(snapshot.getMovieName()) || isBlank(snapshot.getCinemaName()) ||
+                isBlank(snapshot.getHallName()) || isBlank(snapshot.getShowDate()) ||
+                isBlank(snapshot.getShowTime()) || snapshot.getUnitPrice() == null ||
+                snapshot.getVersion() == null) {
+            throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(),
+                    "场次信息不完整，暂时无法创建订单");
+        }
+        return snapshot;
+    }
+
+    private String formatSeatsInfo(List<SeatLockPO> lockedSeats) {
+        return lockedSeats.stream()
+                .sorted((left, right) -> {
+                    int rowCompare = Integer.compare(left.getRowNum(), right.getRowNum());
+                    if (rowCompare != 0) {
+                        return rowCompare;
+                    }
+                    return Integer.compare(left.getColNum(), right.getColNum());
+                })
+                .map(seat -> seat.getRowNum() + "排" + seat.getColNum() + "座")
+                .collect(Collectors.joining(","));
+    }
+
+    private OrderPO buildPendingOrder(Long userId, OrderSnapshotSourceDTO snapshot,
+                                      String lockToken, String orderNo, LocalDateTime now,
+                                      int seatCount, String seatsInfo) {
         OrderPO order = new OrderPO();
         order.setOrderNo(orderNo);
         order.setUserId(userId);
-        order.setScheduleId(schedule.getId());
+        order.setScheduleId(snapshot.getScheduleId());
         order.setLockToken(lockToken);
-        order.setMovieName(null);
-        order.setCinemaName(null);
-        order.setHallName(schedule.getHallName());
-        order.setShowTime(schedule.getShowDate() + " " + schedule.getShowTime());
+        order.setMovieName(snapshot.getMovieName());
+        order.setCinemaName(snapshot.getCinemaName());
+        order.setHallName(snapshot.getHallName());
+        order.setShowTime(snapshot.getShowDate() + " " + snapshot.getShowTime());
         order.setSeatCount(seatCount);
-        order.setSeatsInfo(dto.getSeatsInfo());
-        order.setUnitPrice(schedule.getPrice());
-        order.setTotalPrice(schedule.getPrice().multiply(BigDecimal.valueOf(seatCount)));
+        order.setSeatsInfo(seatsInfo);
+        order.setUnitPrice(snapshot.getUnitPrice());
+        order.setTotalPrice(snapshot.getUnitPrice().multiply(BigDecimal.valueOf(seatCount)));
         order.setStatus(OrderStatusEnum.PENDING.getCode());
         order.setExpireTime(now.plusMinutes(CacheConstants.ORDER_PAY_TIMEOUT_MINUTES));
         return order;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     @Transactional(rollbackFor = Exception.class, timeout = 8)

@@ -1,6 +1,7 @@
 package com.maoyan.dao.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.maoyan.domain.model.dto.OrderSnapshotSourceDTO;
 import com.maoyan.domain.model.po.SchedulePO;
 import org.apache.ibatis.annotations.*;
 
@@ -63,6 +64,43 @@ public interface ScheduleMapper extends BaseMapper<SchedulePO> {
      */
     @Select("SELECT c.nm FROM movie_schedule ms LEFT JOIN cinema c ON ms.cinema_id = c.id WHERE ms.id = #{scheduleId}")
     String selectCinemaNameByScheduleId(@Param("scheduleId") Long scheduleId);
+
+    /**
+     * 查询创建订单所需的可信快照来源。
+     */
+    @Select("""
+        SELECT ms.id AS schedule_id,
+               ms.movie_id,
+               m.nm AS movie_name,
+               ms.cinema_id,
+               c.nm AS cinema_name,
+               ms.hall_name,
+               ms.show_date,
+               ms.show_time,
+               ms.price AS unit_price,
+               ms.status,
+               ms.version
+        FROM movie_schedule ms
+        LEFT JOIN movie m ON ms.movie_id = m.id AND m.deleted = 0
+        LEFT JOIN cinema c ON ms.cinema_id = c.id AND c.deleted = 0
+        WHERE ms.id = #{scheduleId}
+          AND ms.deleted = 0
+        LIMIT 1
+    """)
+    @Results({
+        @Result(property = "scheduleId", column = "schedule_id"),
+        @Result(property = "movieId", column = "movie_id"),
+        @Result(property = "movieName", column = "movie_name"),
+        @Result(property = "cinemaId", column = "cinema_id"),
+        @Result(property = "cinemaName", column = "cinema_name"),
+        @Result(property = "hallName", column = "hall_name"),
+        @Result(property = "showDate", column = "show_date"),
+        @Result(property = "showTime", column = "show_time"),
+        @Result(property = "unitPrice", column = "unit_price"),
+        @Result(property = "status", column = "status"),
+        @Result(property = "version", column = "version")
+    })
+    OrderSnapshotSourceDTO selectOrderSnapshotSource(@Param("scheduleId") Long scheduleId);
 
     /**
      * 查询某影院有排片的电影ID列表（今天及之后）
