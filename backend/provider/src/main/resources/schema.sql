@@ -232,6 +232,7 @@ CREATE INDEX IF NOT EXISTS idx_user_account ON sys_user(account);
 CREATE INDEX IF NOT EXISTS idx_schedule_movie ON movie_schedule(movie_id, show_date, deleted);
 CREATE INDEX IF NOT EXISTS idx_schedule_cinema ON movie_schedule(cinema_id, show_date, deleted);
 CREATE INDEX IF NOT EXISTS idx_order_user   ON ticket_order(user_id, status, deleted);
+CREATE INDEX IF NOT EXISTS idx_order_status_expire ON ticket_order(status, expire_time);
 CREATE INDEX IF NOT EXISTS idx_order_no     ON ticket_order(order_no);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_ticket_order_lock_token ON ticket_order(lock_token);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_wish_unique ON user_wish(user_id, movie_id);
