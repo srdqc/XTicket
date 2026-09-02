@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS ticket_order (
     update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted         INT           DEFAULT 0,
     INDEX idx_order_user (user_id, status, deleted),
+    INDEX idx_order_status_expire (status, expire_time),
     INDEX idx_order_no (order_no),
     UNIQUE INDEX uq_ticket_order_lock_token (lock_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
