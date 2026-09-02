@@ -170,6 +170,20 @@ CREATE TABLE IF NOT EXISTS ticket_order (
     deleted         INT           DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS payment_record (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    payment_no      VARCHAR(64)   NOT NULL      COMMENT '支付记录编号',
+    order_no        VARCHAR(64)   NOT NULL      COMMENT '订单编号',
+    user_id         BIGINT        NOT NULL      COMMENT '用户ID',
+    amount          DECIMAL(10,2) NOT NULL      COMMENT '支付金额',
+    channel         VARCHAR(32)   NOT NULL      COMMENT '支付渠道: MOCK_POINTS',
+    status          VARCHAR(20)   NOT NULL      COMMENT '支付状态: SUCCESS',
+    paid_at         TIMESTAMP     NOT NULL      COMMENT '支付成功时间',
+    create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+    deleted         INT           DEFAULT 0
+);
+
 -- 用户想看记录表
 CREATE TABLE IF NOT EXISTS user_wish (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -235,6 +249,8 @@ CREATE INDEX IF NOT EXISTS idx_order_user   ON ticket_order(user_id, status, del
 CREATE INDEX IF NOT EXISTS idx_order_status_expire ON ticket_order(status, expire_time);
 CREATE INDEX IF NOT EXISTS idx_order_no     ON ticket_order(order_no);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_ticket_order_lock_token ON ticket_order(lock_token);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_record_payment_no ON payment_record(payment_no);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_record_order_no ON payment_record(order_no);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_wish_unique ON user_wish(user_id, movie_id);
 CREATE INDEX IF NOT EXISTS idx_hall_cinema ON cinema_hall(cinema_id, deleted);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_hall_unique ON cinema_hall(cinema_id, hall_name, deleted);

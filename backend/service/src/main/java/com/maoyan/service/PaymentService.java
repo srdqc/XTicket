@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.maoyan.common.constants.MQConstants;
 import com.maoyan.dao.mapper.OrderMapper;
 import com.maoyan.dao.mapper.OrderSeatMapper;
+import com.maoyan.dao.mapper.PaymentRecordMapper;
 import com.maoyan.dao.mapper.SeatLockMapper;
 import com.maoyan.dao.mapper.UserMapper;
 import com.maoyan.domain.enums.OrderStatusEnum;
@@ -12,6 +13,7 @@ import com.maoyan.domain.exception.BizException;
 import com.maoyan.domain.model.event.OrderEvent;
 import com.maoyan.domain.model.po.OrderPO;
 import com.maoyan.domain.model.po.OrderSeatPO;
+import com.maoyan.domain.model.po.PaymentRecordPO;
 import com.maoyan.domain.model.po.SeatLockPO;
 import com.maoyan.domain.model.po.UserPO;
 import com.maoyan.domain.model.vo.OrderVO;
@@ -29,6 +31,7 @@ import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -38,6 +41,7 @@ public class PaymentService {
     private final OrderMapper orderMapper;
     private final SeatLockMapper seatLockMapper;
     private final OrderSeatMapper orderSeatMapper;
+    private final PaymentRecordMapper paymentRecordMapper;
     private final UserMapper userMapper;
     private final DistributedLockService lockService;
     private final OrderClosureService orderClosureService;
@@ -46,6 +50,9 @@ public class PaymentService {
     private RocketMQTemplate rocketMQTemplate;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter PAYMENT_NO_FMT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+    private static final String PAYMENT_CHANNEL = "MOCK_POINTS";
+    private static final String PAYMENT_STATUS_SUCCESS = "SUCCESS";
 
     @Transactional(rollbackFor = Exception.class, timeout = 8)
     public OrderVO payOrder(Long userId, String orderNo) {
@@ -104,6 +111,7 @@ public class PaymentService {
 
         confirmOrderSeats(order, locks, now);
         seatLockMapper.markAsPurchased(orderNo, now);
+        insertPaymentRecord(order, now);
 
         order.setStatus(OrderStatusEnum.PAID.getCode());
         order.setPayTime(now);
@@ -114,6 +122,27 @@ public class PaymentService {
         UserPO updatedUser = userMapper.selectById(userId);
         vo.setRemainingPoints(updatedUser != null ? updatedUser.getPoints() : 0);
         return vo;
+    }
+
+    private void insertPaymentRecord(OrderPO order, LocalDateTime now) {
+        PaymentRecordPO record = new PaymentRecordPO();
+        record.setPaymentNo(generatePaymentNo(order.getUserId()));
+        record.setOrderNo(order.getOrderNo());
+        record.setUserId(order.getUserId());
+        record.setAmount(order.getTotalPrice());
+        record.setChannel(PAYMENT_CHANNEL);
+        record.setStatus(PAYMENT_STATUS_SUCCESS);
+        record.setPaidAt(now);
+        record.setCreateTime(now);
+        record.setUpdateTime(now);
+        paymentRecordMapper.insert(record);
+    }
+
+    private String generatePaymentNo(Long userId) {
+        String time = LocalDateTime.now().format(PAYMENT_NO_FMT);
+        String userSuffix = String.format("%04d", userId % 10000);
+        String random = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        return "PAY" + time + userSuffix + random;
     }
 
     private void confirmOrderSeats(OrderPO order, List<SeatLockPO> locks, LocalDateTime now) {
