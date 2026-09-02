@@ -14,6 +14,7 @@ import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
@@ -92,6 +93,35 @@ public class ActivityFollowService {
         return getFollowCount(movieId);
     }
 
+    /**
+     * 用户取消关注活动。
+     *
+     * @return 操作后的总关注数
+     */
+    @Transactional
+    public long unfollowActivity(Long userId, Long movieId) {
+        boolean removed = false;
+        if (stringRedisTemplate != null) {
+            String userWishKey = CacheConstants.USER_WISH_PREFIX + userId;
+            Long removedCount = stringRedisTemplate.opsForSet().remove(userWishKey, String.valueOf(movieId));
+            removed = removedCount != null && removedCount > 0;
+            if (removed) {
+                Long count = stringRedisTemplate.opsForHash().increment(
+                        CacheConstants.MOVIE_WISH_HASH, String.valueOf(movieId), -1);
+                if (count != null && count < 0) {
+                    stringRedisTemplate.opsForHash().put(
+                            CacheConstants.MOVIE_WISH_HASH, String.valueOf(movieId), "0");
+                }
+            }
+        }
+
+        int deletedRows = deleteFollowRecord(userId, movieId);
+        if (removed || deletedRows > 0) {
+            activityMapper.decrementFollowCount(movieId);
+        }
+        return getFollowCount(movieId);
+    }
+
     /** 同步写回 DB（降级或 MQ 不可用时） */
     private void syncWriteBack(Long userId, Long movieId) {
         try {
@@ -103,11 +133,15 @@ public class ActivityFollowService {
         } catch (Exception e) {
             log.debug("[Wish] Wish record already exists: userId={}, movieId={}", userId, movieId);
         }
-        ActivityPO movie = activityMapper.selectById(movieId);
-        if (movie != null) {
-            movie.setWish(movie.getWish() + 1);
-            activityMapper.updateById(movie);
-        }
+        activityMapper.incrementFollowCount(movieId);
+    }
+
+    private int deleteFollowRecord(Long userId, Long movieId) {
+        return activityFollowMapper.delete(
+                new LambdaQueryWrapper<ActivityFollowPO>()
+                        .eq(ActivityFollowPO::getUserId, userId)
+                        .eq(ActivityFollowPO::getActivityId, movieId)
+        );
     }
 
     /**

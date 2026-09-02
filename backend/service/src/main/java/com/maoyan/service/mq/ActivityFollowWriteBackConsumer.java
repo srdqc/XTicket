@@ -36,18 +36,24 @@ public class ActivityFollowWriteBackConsumer implements RocketMQListener<WishEve
     @Override
     public void onMessage(WishEvent event) {
         try {
-            try {
-                ActivityFollowPO wish = new ActivityFollowPO();
-                wish.setUserId(event.getUserId());
-                wish.setActivityId(event.getMovieId());
-                wish.setCreateTime(LocalDateTime.now());
-                activityFollowMapper.insert(wish);
-            } catch (Exception e) { /* 唯一索引冲突=已存在 */ }
-
-            ActivityPO movie = activityMapper.selectById(event.getMovieId());
-            if (movie != null) {
-                movie.setWish(movie.getWish() + event.getDelta());
-                activityMapper.updateById(movie);
+            if (event.getDelta() > 0) {
+                try {
+                    ActivityFollowPO wish = new ActivityFollowPO();
+                    wish.setUserId(event.getUserId());
+                    wish.setActivityId(event.getMovieId());
+                    wish.setCreateTime(LocalDateTime.now());
+                    activityFollowMapper.insert(wish);
+                } catch (Exception e) { /* 唯一索引冲突=已存在 */ }
+                activityMapper.incrementFollowCount(event.getMovieId());
+            } else if (event.getDelta() < 0) {
+                int deletedRows = activityFollowMapper.delete(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ActivityFollowPO>()
+                                .eq(ActivityFollowPO::getUserId, event.getUserId())
+                                .eq(ActivityFollowPO::getActivityId, event.getMovieId())
+                );
+                if (deletedRows > 0) {
+                    activityMapper.decrementFollowCount(event.getMovieId());
+                }
             }
             log.debug("[WishConsumer] Writeback success: userId={}, movieId={}", event.getUserId(), event.getMovieId());
         } catch (Exception e) {
