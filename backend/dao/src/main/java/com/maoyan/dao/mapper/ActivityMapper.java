@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.SelectProvider;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -70,4 +71,10 @@ public interface ActivityMapper extends BaseMapper<ActivityPO> {
                            @Param("cat") String cat,
                            @Param("src") String src,
                            @Param("year") Integer year);
+
+    @Update("UPDATE activity SET wish = wish + 1, update_time = CURRENT_TIMESTAMP WHERE id = #{activityId} AND deleted = 0")
+    int incrementFollowCount(@Param("activityId") Long activityId);
+
+    @Update("UPDATE activity SET wish = CASE WHEN wish > 0 THEN wish - 1 ELSE 0 END, update_time = CURRENT_TIMESTAMP WHERE id = #{activityId} AND deleted = 0")
+    int decrementFollowCount(@Param("activityId") Long activityId);
 }

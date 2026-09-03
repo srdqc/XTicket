@@ -143,18 +143,18 @@ public class StockService {
     }
 
     /**
-     * 初始化场次详情到 Redis（Hash 结构）
+     * 初始化活动场次详情到 Redis（Hash 结构）
      */
-    public void initScheduleDetail(Long scheduleId, Long movieId, Long cinemaId,
+    public void initScheduleDetail(Long scheduleId, Long activityId, Long venueId,
                                    String hallName, String showDate, String showTime,
                                    String endTime, String lang, Integer totalSeats,
                                    Integer availableSeats, BigDecimal price,
                                    Integer status, Integer version) {
         if (stringRedisTemplate == null) return;
-        String key = CacheConstants.SCHEDULE_DETAIL_PREFIX + scheduleId;
+        String key = CacheConstants.SESSION_DETAIL_PREFIX + scheduleId;
         Map<String, String> fields = new HashMap<>();
-        fields.put("movieId", String.valueOf(movieId));
-        fields.put("cinemaId", String.valueOf(cinemaId));
+        fields.put("activityId", String.valueOf(activityId));
+        fields.put("venueId", String.valueOf(venueId));
         fields.put("hallName", hallName);
         fields.put("showDate", showDate);
         fields.put("showTime", showTime);
@@ -166,7 +166,7 @@ public class StockService {
         fields.put("version", String.valueOf(version));
         stringRedisTemplate.opsForHash().putAll(key, fields);
         stringRedisTemplate.expire(key, CacheConstants.STOCK_EXPIRE_HOURS, TimeUnit.HOURS);
-        log.info("[Stock] Initialized schedule detail: scheduleId={}, version={}", scheduleId, version);
+        log.info("[Stock] Initialized session detail: sessionId={}, version={}", scheduleId, version);
     }
 
     /**
@@ -176,7 +176,7 @@ public class StockService {
      */
     public Map<Object, Object> getScheduleDetail(Long scheduleId) {
         if (stringRedisTemplate == null) return null;
-        String key = CacheConstants.SCHEDULE_DETAIL_PREFIX + scheduleId;
+        String key = CacheConstants.SESSION_DETAIL_PREFIX + scheduleId;
         Map<Object, Object> fields = stringRedisTemplate.opsForHash().entries(key);
         return fields.isEmpty() ? null : fields;
     }
@@ -192,8 +192,8 @@ public class StockService {
         try {
             ActivitySessionPO po = new ActivitySessionPO();
             po.setId(scheduleId);
-            po.setActivityId(parseLong(fields.get("movieId")));
-            po.setVenueId(parseLong(fields.get("cinemaId")));
+            po.setActivityId(parseLong(fields.get("activityId")));
+            po.setVenueId(parseLong(fields.get("venueId")));
             po.setHallName((String) fields.get("hallName"));
             po.setShowDate((String) fields.get("showDate"));
             po.setShowTime((String) fields.get("showTime"));
@@ -212,8 +212,6 @@ public class StockService {
 
     /**
      * 将 ActivitySessionPO 写入 Redis Hash 缓存。
-     *
-     * <p>Redis hash 字段名暂时保留 movieId/cinemaId，以兼容 Phase 3B 之前的上层调用。</p>
      */
     public void initScheduleDetail(ActivitySessionPO schedule) {
         initScheduleDetail(
@@ -239,7 +237,7 @@ public class StockService {
     public void evictScheduleCache(Long scheduleId) {
         if (stringRedisTemplate == null) return;
         stringRedisTemplate.delete(CacheConstants.SCHEDULE_STOCK_PREFIX + scheduleId);
-        stringRedisTemplate.delete(CacheConstants.SCHEDULE_DETAIL_PREFIX + scheduleId);
+        stringRedisTemplate.delete(CacheConstants.SESSION_DETAIL_PREFIX + scheduleId);
         log.info("[Stock] Evicted cache for scheduleId={}", scheduleId);
     }
 

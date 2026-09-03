@@ -134,6 +134,20 @@ public class ActivityService {
     }
 
     /**
+     * 判断活动是否存在且未删除。
+     */
+    public boolean activityExists(Long activityId) {
+        if (activityId == null) {
+            return false;
+        }
+        return activityMapper.selectCount(
+                new LambdaQueryWrapper<ActivityPO>()
+                        .eq(ActivityPO::getId, activityId)
+                        .eq(ActivityPO::getDeleted, 0)
+        ) > 0;
+    }
+
+    /**
      * 搜索活动
      */
     public List<MovieVO> searchActivities(String keyword) {

@@ -409,7 +409,7 @@ function Get-Stock {
     param([long]$ScheduleId)
     $db = Try-Db "SELECT id, available_seats, version, price FROM activity_session WHERE id = $ScheduleId"
     $redisStock = Invoke-Redis -CommandArgs @("GET", "schedule:stock:$ScheduleId")
-    $redisDetail = Invoke-Redis -CommandArgs @("HGETALL", "schedule:detail:$ScheduleId")
+    $redisDetail = Invoke-Redis -CommandArgs @("HGETALL", "session:detail:$ScheduleId")
     $dirty = Invoke-Redis -CommandArgs @("HGET", "stock:dirty:rollback", "$ScheduleId")
     return [pscustomobject]@{
         db = $(if ($db.ok -and @($db.value).Count -gt 0) { @($db.value)[0] } else { $null })

@@ -37,8 +37,8 @@ public final class CacheConstants {
     /** 场次库存: schedule:stock:{scheduleId} */
     public static final String SCHEDULE_STOCK_PREFIX = "schedule:stock:";
 
-    /** 场次详情缓存: schedule:detail:{scheduleId} */
-    public static final String SCHEDULE_DETAIL_PREFIX = "schedule:detail:";
+    /** 活动场次详情缓存: session:detail:{sessionId} */
+    public static final String SESSION_DETAIL_PREFIX = "session:detail:";
 
     /**
      * 脏数据队列（Redis 回滚失败时记录，用于修复不一致）
