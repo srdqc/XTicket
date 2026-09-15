@@ -6,6 +6,7 @@ import com.maoyan.common.utils.JwtUtil;
 import com.maoyan.common.utils.PasswordUtil;
 import com.maoyan.dao.mapper.UserMapper;
 import com.maoyan.domain.enums.ResponseCodeEnum;
+import com.maoyan.domain.enums.UserRoleEnum;
 import com.maoyan.domain.exception.BizException;
 import com.maoyan.domain.model.dto.UserLoginDTO;
 import com.maoyan.domain.model.dto.UserRegisterDTO;
@@ -78,6 +79,7 @@ public class UserService {
             user.setUserNick(dto.getUserNick() != null ? dto.getUserNick() : account);
             user.setUserHeadImg(CommonConstants.DEFAULT_HEAD_IMG);
             user.setPoints(500);
+            user.setRole(UserRoleEnum.USER.name());
 
             userMapper.insert(user);
             log.info("用户注册成功: id={}, account={}, points=500", user.getId(), account);

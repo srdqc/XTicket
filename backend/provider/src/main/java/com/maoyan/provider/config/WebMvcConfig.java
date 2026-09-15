@@ -34,7 +34,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/order/**",    // 订单操作
                         "/api/seat/**",     // 座位操作
                         "/api/payment/**",  // 支付操作
-                        "/api/tickets/**"   // 电子票资产
+                        "/api/tickets/**",  // 电子票资产
+                        "/api/checkin/**"   // 工作人员核销
                 )
                 .excludePathPatterns(
                         "/api/seat/layout"      // 查看座位布局无需登录

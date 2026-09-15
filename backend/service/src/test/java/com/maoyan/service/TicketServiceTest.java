@@ -134,6 +134,20 @@ class TicketServiceTest {
     }
 
     @Test
+    void ticketOwnerSeesUsedStatusAfterCheckIn() {
+        TicketVO used = new TicketVO();
+        used.setTicketNo("ET-USED");
+        used.setStatus(TicketStatusEnum.USED.getCode());
+        used.setUsedAt("2026-09-15T10:30:00");
+        when(electronicTicketMapper.selectViewByTicketNoAndUserId("ET-USED", 1001L)).thenReturn(used);
+
+        TicketVO result = ticketService.getUserTicket(1001L, "ET-USED");
+
+        assertThat(result.getStatusDesc()).isEqualTo("已核销");
+        assertThat(result.getUsedAt()).isEqualTo("2026-09-15T10:30:00");
+    }
+
+    @Test
     void schemasDeclareBothTicketUniquenessConstraints() throws Exception {
         String mysql = Files.readString(Path.of("..", "..", "docker", "mysql", "init", "00-init.sql"));
         String h2 = Files.readString(Path.of("..", "provider", "src", "main", "resources", "schema.sql"));

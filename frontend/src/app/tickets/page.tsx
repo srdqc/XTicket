@@ -8,6 +8,12 @@ import Loading from '@/components/Loading'
 import api from '@/lib/api'
 import type { TicketItem } from '@/types'
 
+const STATUS_VIEW: Record<number, { label: string; className: string }> = {
+  0: { label: '待使用', className: 'text-emerald-600' },
+  1: { label: '已核销', className: 'text-gray-500' },
+  2: { label: '已失效', className: 'text-red-600' },
+}
+
 function TicketsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -41,14 +47,19 @@ function TicketsContent() {
           <div className="py-20 text-center text-gray-400">暂无电子票</div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            {tickets.map((ticket) => (
+            {tickets.map((ticket) => {
+              const statusView = STATUS_VIEW[ticket.status] || {
+                label: ticket.statusDesc,
+                className: 'text-gray-500',
+              }
+              return (
               <article key={ticket.ticketNo} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                 <div className="border-b border-dashed border-gray-200 px-5 py-4 flex items-center justify-between gap-4">
                   <div className="min-w-0">
                     <div className="font-medium text-gray-800 truncate">{ticket.activityName}</div>
                     <div className="text-xs text-gray-400 mt-1 font-mono break-all">{ticket.ticketNo}</div>
                   </div>
-                  <span className="flex-shrink-0 text-sm font-medium text-green-600">{ticket.statusDesc}</span>
+                  <span className={`flex-shrink-0 text-sm font-medium ${statusView.className}`}>{statusView.label}</span>
                 </div>
                 <div className="px-5 py-4 space-y-3 text-sm">
                   <div className="flex items-start gap-2 text-gray-600">
@@ -65,7 +76,8 @@ function TicketsContent() {
                   </div>
                 </div>
               </article>
-            ))}
+              )
+            })}
           </div>
         )}
       </main>

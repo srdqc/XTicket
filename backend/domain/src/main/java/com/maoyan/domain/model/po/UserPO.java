@@ -32,4 +32,7 @@ public class UserPO extends BaseEntity {
 
     /** 用户积分(1积分=1元) */
     private Integer points = 0;
+
+    /** 最小业务角色：USER / CHECKIN_STAFF */
+    private String role;
 }

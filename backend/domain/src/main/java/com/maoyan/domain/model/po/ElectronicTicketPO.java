@@ -25,5 +25,6 @@ public class ElectronicTicketPO extends BaseEntity {
     private Integer status;
     private LocalDateTime issuedAt;
     private LocalDateTime usedAt;
+    private Long checkedBy;
     private LocalDateTime invalidatedAt;
 }

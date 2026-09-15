@@ -142,6 +142,10 @@ const api = {
   getTicket: (ticketNo: string) =>
     authInstance.get(`/tickets/${ticketNo}`).then((res) => res.data),
 
+  /** 工作人员核销电子票 */
+  checkInTicket: (ticketNo: string, sessionId: number) =>
+    authInstance.post(`/checkin/tickets/${encodeURIComponent(ticketNo)}`, { sessionId }).then((res) => res.data),
+
   // ==================== 认证相关 ====================
 
   /** 用户登录 */
