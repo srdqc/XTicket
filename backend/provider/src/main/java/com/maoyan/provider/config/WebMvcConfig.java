@@ -33,11 +33,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns(
                         "/api/order/**",    // 订单操作
                         "/api/seat/**",     // 座位操作
-                        "/api/payment/**",  // 支付操作
-                        "/ajax/wish/**"     // 想看操作
+                        "/api/payment/**"   // 支付操作
                 )
                 .excludePathPatterns(
-                        "/ajax/wish/check/**",  // 检查想看状态无需登录
                         "/api/seat/layout"      // 查看座位布局无需登录
                 );
     }

@@ -7,10 +7,10 @@ import com.maoyan.dao.mapper.ActivityFollowMapper;
 import com.maoyan.dao.mapper.ActivityMapper;
 import com.maoyan.domain.model.po.ActivityFollowPO;
 import com.maoyan.domain.model.po.ActivityPO;
-import com.maoyan.domain.model.vo.CinemaVO;
-import com.maoyan.domain.model.vo.MovieVO;
 import com.maoyan.domain.model.vo.api.FollowStatus;
 import com.maoyan.domain.model.vo.api.SearchResponse;
+import com.maoyan.domain.model.vo.api.ActivitySummary;
+import com.maoyan.domain.model.vo.api.VenueSummary;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentMatchers;
@@ -99,17 +99,17 @@ class ActivityFollowSearchApiContractTest {
 
     @Test
     void searchResponseUsesActivitiesAndVenues() throws Exception {
-        MovieVO movie = new MovieVO();
-        movie.setId(1L);
-        movie.setNm("逐光者");
+        ActivitySummary activity = new ActivitySummary();
+        activity.setId(1L);
+        activity.setName("逐光者");
 
-        CinemaVO cinema = new CinemaVO();
-        cinema.setId(2L);
-        cinema.setNm("学生活动中心");
+        VenueSummary venue = new VenueSummary();
+        venue.setId(2L);
+        venue.setName("学生活动中心");
 
-        SearchResponse response = SearchResponse.fromLegacyResult(Map.of(
-                "movies", Map.of("list", List.of(movie)),
-                "cinemas", Map.of("list", List.of(cinema))
+        SearchResponse response = SearchResponse.fromSearchResult(Map.of(
+                "activities", Map.of("list", List.of(activity)),
+                "venues", Map.of("list", List.of(venue))
         ), "all");
 
         JsonNode json = objectMapper.valueToTree(response);
@@ -124,8 +124,8 @@ class ActivityFollowSearchApiContractTest {
 
     @Test
     void searchTypeFiltersResponseGroups() {
-        SearchResponse activitiesOnly = SearchResponse.fromLegacyResult(Map.of(), "activity");
-        SearchResponse venuesOnly = SearchResponse.fromLegacyResult(Map.of(), "venue");
+        SearchResponse activitiesOnly = SearchResponse.fromSearchResult(Map.of(), "activity");
+        SearchResponse venuesOnly = SearchResponse.fromSearchResult(Map.of(), "venue");
 
         assertThat(activitiesOnly.getActivities()).isNotNull();
         assertThat(activitiesOnly.getVenues()).isNull();

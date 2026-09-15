@@ -1,7 +1,7 @@
 package com.maoyan.service;
 
-import com.maoyan.domain.model.vo.CinemaVO;
-import com.maoyan.domain.model.vo.MovieVO;
+import com.maoyan.domain.model.vo.api.ActivitySummary;
+import com.maoyan.domain.model.vo.api.VenueSummary;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -25,21 +25,21 @@ public class SearchService {
     private VenueService venueService;
 
     /**
-     * 综合搜索（电影 + 影院）
+     * 综合搜索（活动 + 场馆）
      *
      * @param keyword 关键词
      * @param cityId  城市ID
-     * @return 搜索结果 { cinemas: { list: [...] }, movies: { list: [...] } }
+     * @return 搜索结果 { venues: { list: [...] }, activities: { list: [...] } }
      */
     public Map<String, Object> search(String keyword, Long cityId) {
         log.info("搜索: keyword={}, cityId={}", keyword, cityId);
 
-        List<MovieVO> movies = activityService.searchActivities(keyword);
-        List<CinemaVO> cinemas = venueService.searchVenues(keyword, cityId);
+        List<ActivitySummary> activities = activityService.searchActivities(keyword);
+        List<VenueSummary> venues = venueService.searchVenues(keyword, cityId);
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("movies", Map.of("list", movies));
-        result.put("cinemas", Map.of("list", cinemas));
+        result.put("activities", Map.of("list", activities));
+        result.put("venues", Map.of("list", venues));
         return result;
     }
 

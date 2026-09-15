@@ -1,8 +1,6 @@
 package com.maoyan.domain.model.vo.api;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.maoyan.domain.model.vo.CinemaVO;
-import com.maoyan.domain.model.vo.MovieVO;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
@@ -18,7 +16,7 @@ public class SearchResponse implements Serializable {
     private ResultGroup<ActivitySummary> activities;
     private ResultGroup<VenueSummary> venues;
 
-    public static SearchResponse fromLegacyResult(Map<String, Object> result, String type) {
+    public static SearchResponse fromSearchResult(Map<String, Object> result, String type) {
         SearchResponse response = new SearchResponse();
         String normalizedType = type == null || type.isBlank() ? "all" : type.trim().toLowerCase();
         if ("all".equals(normalizedType) || "activity".equals(normalizedType)) {
@@ -38,34 +36,31 @@ public class SearchResponse implements Serializable {
         return "all".equals(normalizedType) || "activity".equals(normalizedType) || "venue".equals(normalizedType);
     }
 
-    @SuppressWarnings("unchecked")
     private static List<ActivitySummary> toActivities(Map<String, Object> result) {
-        if (result == null || !(result.get("movies") instanceof Map<?, ?> movies)) {
+        if (result == null || !(result.get("activities") instanceof Map<?, ?> activities)) {
             return Collections.emptyList();
         }
-        Object list = movies.get("list");
+        Object list = activities.get("list");
         if (!(list instanceof List<?> values)) {
             return Collections.emptyList();
         }
         return values.stream()
-                .filter(MovieVO.class::isInstance)
-                .map(MovieVO.class::cast)
-                .map(ActivitySummary::from)
+                .filter(ActivitySummary.class::isInstance)
+                .map(ActivitySummary.class::cast)
                 .toList();
     }
 
     private static List<VenueSummary> toVenues(Map<String, Object> result) {
-        if (result == null || !(result.get("cinemas") instanceof Map<?, ?> cinemas)) {
+        if (result == null || !(result.get("venues") instanceof Map<?, ?> venues)) {
             return Collections.emptyList();
         }
-        Object list = cinemas.get("list");
+        Object list = venues.get("list");
         if (!(list instanceof List<?> values)) {
             return Collections.emptyList();
         }
         return values.stream()
-                .filter(CinemaVO.class::isInstance)
-                .map(CinemaVO.class::cast)
-                .map(VenueSummary::from)
+                .filter(VenueSummary.class::isInstance)
+                .map(VenueSummary.class::cast)
                 .toList();
     }
 

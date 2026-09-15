@@ -33,12 +33,12 @@ function OrderSuccessContent() {
       </div>
 
       <h1 className="text-2xl font-bold text-gray-800 mb-2">支付成功！</h1>
-      <p className="text-gray-500 mb-8">请凭订单信息到影院取票观影</p>
+      <p className="text-gray-500 mb-8">支付成功后请妥善保存订单信息</p>
 
       {/* 订单卡片 */}
       {order && (
         <div className="bg-white rounded-lg shadow-sm w-[480px] overflow-hidden">
-          {/* 影片信息 */}
+          {/* 活动信息 */}
           <div className="bg-gradient-to-r from-primary to-red-400 text-white p-6">
             <div className="text-xl font-bold mb-1">{order.movieName}</div>
             <div className="text-sm opacity-90">{order.cinemaName} · {order.hallName}</div>
@@ -46,6 +46,14 @@ function OrderSuccessContent() {
 
           {/* 详情 */}
           <div className="p-6 space-y-4 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-400">活动</span>
+              <span className="text-gray-700">{order.movieName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">场馆</span>
+              <span className="text-gray-700">{order.cinemaName} · {order.hallName}</span>
+            </div>
             <div className="flex justify-between">
               <span className="text-gray-400">场次时间</span>
               <span className="text-gray-700">{order.showTime}</span>
@@ -68,14 +76,9 @@ function OrderSuccessContent() {
             </div>
           </div>
 
-          {/* 取票码（模拟） */}
           <div className="border-t border-dashed border-gray-200 mx-6" />
-          <div className="p-6 text-center">
-            <div className="text-xs text-gray-400 mb-2">取票验证码</div>
-            <div className="text-3xl font-bold tracking-[0.3em] text-gray-800">
-              {String(Math.floor(Math.random() * 900000) + 100000)}
-            </div>
-            <div className="text-xs text-gray-400 mt-1">请到影院自助取票机输入此验证码取票</div>
+          <div className="p-6 text-center text-sm text-gray-500">
+            请在订单列表中保留该订单记录，后续安排以活动现场说明为准。
           </div>
         </div>
       )}

@@ -4,8 +4,8 @@ import { useState } from 'react'
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'
 import HomeTab from '@/components/HomeTab'
-import MoviesTab from '@/components/MoviesTab'
-import CinemasTab from '@/components/CinemasTab'
+import ActivitiesTab from '@/components/ActivitiesTab'
+import VenuesTab from '@/components/VenuesTab'
 import type { Tab } from '@/types'
 
 export default function RootPage() {
@@ -17,8 +17,8 @@ export default function RootPage() {
 
       <main className="max-w-[1200px] mx-auto mt-12 min-h-[600px] pb-10 w-full">
         {activeTab === 'home' && <HomeTab />}
-        {activeTab === 'movies' && <MoviesTab />}
-        {activeTab === 'cinemas' && <CinemasTab />}
+        {activeTab === 'activities' && <ActivitiesTab />}
+        {activeTab === 'venues' && <VenuesTab />}
       </main>
 
       <Footer />

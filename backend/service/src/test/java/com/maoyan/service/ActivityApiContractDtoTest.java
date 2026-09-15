@@ -2,15 +2,14 @@ package com.maoyan.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.maoyan.domain.model.vo.CinemaVO;
-import com.maoyan.domain.model.vo.MovieVO;
-import com.maoyan.domain.model.vo.ScheduleVO;
+import com.maoyan.domain.model.po.ActivityPO;
+import com.maoyan.domain.model.po.ActivitySessionPO;
+import com.maoyan.domain.model.po.VenuePO;
 import com.maoyan.domain.model.vo.api.*;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -20,13 +19,13 @@ class ActivityApiContractDtoTest {
 
     @Test
     void activityResourceUsesIdAndName() throws Exception {
-        MovieVO legacy = new MovieVO();
-        legacy.setId(1L);
-        legacy.setNm("逐光者");
-        legacy.setImg("cover");
-        legacy.setWish(12);
+        ActivityPO activity = new ActivityPO();
+        activity.setId(1L);
+        activity.setNm("逐光者");
+        activity.setImg("cover");
+        activity.setWish(12);
 
-        JsonNode json = objectMapper.valueToTree(ActivitySummary.from(legacy));
+        JsonNode json = objectMapper.valueToTree(ActivitySummary.from(activity));
 
         assertThat(json.has("id")).isTrue();
         assertThat(json.has("name")).isTrue();
@@ -39,12 +38,12 @@ class ActivityApiContractDtoTest {
 
     @Test
     void venueResourceUsesIdAndName() {
-        CinemaVO legacy = new CinemaVO();
-        legacy.setId(2L);
-        legacy.setNm("活动中心");
-        legacy.setAddr("校内");
+        VenuePO venue = new VenuePO();
+        venue.setId(2L);
+        venue.setNm("活动中心");
+        venue.setAddr("校内");
 
-        VenueSummary summary = VenueSummary.from(legacy);
+        VenueSummary summary = VenueSummary.from(venue, List.of());
 
         assertThat(summary.getId()).isEqualTo(2L);
         assertThat(summary.getName()).isEqualTo("活动中心");
@@ -53,15 +52,15 @@ class ActivityApiContractDtoTest {
 
     @Test
     void sessionResourceUsesActivityVenueSessionIds() throws Exception {
-        ScheduleVO legacy = new ScheduleVO();
-        legacy.setId(3L);
-        legacy.setMovieId(4L);
-        legacy.setCinemaId(5L);
-        legacy.setHallName("主会场");
-        legacy.setLang("中文");
-        legacy.setPrice(new BigDecimal("39.90"));
+        ActivitySessionPO session = new ActivitySessionPO();
+        session.setId(3L);
+        session.setActivityId(4L);
+        session.setVenueId(5L);
+        session.setHallName("主会场");
+        session.setLang("中文");
+        session.setPrice(new BigDecimal("39.90"));
 
-        JsonNode json = objectMapper.valueToTree(SessionSummary.from(legacy));
+        JsonNode json = objectMapper.valueToTree(SessionSummary.from(session, null, 10));
 
         assertThat(json.get("sessionId").asLong()).isEqualTo(3L);
         assertThat(json.get("activityId").asLong()).isEqualTo(4L);
@@ -73,17 +72,17 @@ class ActivityApiContractDtoTest {
 
     @Test
     void groupedSessionsUseStructuredVenueObject() throws Exception {
-        ScheduleVO legacySession = new ScheduleVO();
-        legacySession.setId(6L);
-        legacySession.setMovieId(7L);
-        legacySession.setCinemaId(8L);
-
-        VenueSessionGroup group = VenueSessionGroup.fromLegacyGroup(Map.of(
-                "cinemaId", 8L,
-                "cinemaName", "礼堂",
-                "cinemaAddr", "东区",
-                "schedules", List.of(legacySession)
-        ));
+        ActivitySessionPO session = new ActivitySessionPO();
+        session.setId(6L);
+        session.setActivityId(7L);
+        session.setVenueId(8L);
+        VenuePO venue = new VenuePO();
+        venue.setId(8L);
+        venue.setNm("礼堂");
+        venue.setAddr("东区");
+        VenueSessionGroup group = new VenueSessionGroup();
+        group.setVenue(VenueSummary.from(venue, List.of()));
+        group.setSessions(List.of(SessionSummary.from(session, venue, 10)));
 
         JsonNode json = objectMapper.valueToTree(group);
 

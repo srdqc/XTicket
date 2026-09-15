@@ -4,7 +4,9 @@ import com.maoyan.dao.mapper.ActivitySessionMapper;
 import com.maoyan.dao.mapper.VenueMapper;
 import com.maoyan.domain.model.po.ActivitySessionPO;
 import com.maoyan.domain.model.po.VenuePO;
-import com.maoyan.domain.model.vo.ScheduleVO;
+import com.maoyan.domain.model.vo.api.SessionSummary;
+import com.maoyan.domain.model.vo.api.VenueSessionGroup;
+import com.maoyan.domain.model.vo.api.VenueSummary;
 import com.maoyan.service.cache.MultiLevelCacheService;
 import com.maoyan.service.infrastructure.StockService;
 import jakarta.annotation.PostConstruct;
@@ -134,12 +136,12 @@ public class ActivitySessionService {
     /**
      * 查询活动某日的场次列表
      */
-    public List<ScheduleVO> getSessions(Long movieId, String showDate) {
+    public List<SessionSummary> getSessions(Long activityId, String showDate) {
         if (showDate == null || showDate.isEmpty()) {
             showDate = LocalDate.now().toString();
         }
-        List<ActivitySessionPO> pos = getCachedSchedules(movieId, showDate);
-        return pos.stream().map(this::toVO).toList();
+        List<ActivitySessionPO> pos = getCachedSchedules(activityId, showDate);
+        return pos.stream().map(this::toSummary).toList();
     }
 
     /**
@@ -150,32 +152,27 @@ public class ActivitySessionService {
     }
 
     /**
-     * 查询某活动在某天所有场馆的场次（按场馆分组）
-     *
-     * @return { cinemaId: { cinemaName, cinemaAddr, schedules: [ScheduleVO...] } }
+     * 查询某活动在某天所有场馆的场次（按场馆分组）。
      */
-    public List<Map<String, Object>> getSessionsByVenue(Long movieId, String showDate) {
+    public List<VenueSessionGroup> getSessionsByVenue(Long activityId, String showDate) {
         if (showDate == null || showDate.isEmpty()) {
             showDate = LocalDate.now().toString();
         }
 
-        List<ActivitySessionPO> allSchedules = getCachedSchedules(movieId, showDate);
+        List<ActivitySessionPO> allSchedules = getCachedSchedules(activityId, showDate);
 
-        // 按影院分组
         Map<Long, List<ActivitySessionPO>> grouped = allSchedules.stream()
                 .collect(Collectors.groupingBy(ActivitySessionPO::getVenueId, LinkedHashMap::new, Collectors.toList()));
 
-        List<Map<String, Object>> result = new ArrayList<>();
+        List<VenueSessionGroup> result = new ArrayList<>();
         for (Map.Entry<Long, List<ActivitySessionPO>> entry : grouped.entrySet()) {
-            Long cinemaId = entry.getKey();
-            VenuePO cinema = venueMapper.selectById(cinemaId);
-
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("cinemaId", cinemaId);
-            item.put("cinemaName", cinema != null ? cinema.getNm() : "未知影院");
-            item.put("cinemaAddr", cinema != null ? cinema.getAddr() : "");
-            item.put("schedules", entry.getValue().stream().map(this::toVO).toList());
-            result.add(item);
+            VenuePO venue = venueMapper.selectById(entry.getKey());
+            VenueSessionGroup group = new VenueSessionGroup();
+            group.setVenue(VenueSummary.from(venue, Collections.emptyList()));
+            group.setSessions(entry.getValue().stream()
+                    .map(session -> toSummary(session, venue))
+                    .toList());
+            result.add(group);
         }
         return result;
     }
@@ -200,22 +197,14 @@ public class ActivitySessionService {
         });
     }
 
-    private ScheduleVO toVO(ActivitySessionPO po) {
-        ScheduleVO vo = new ScheduleVO();
-        vo.setId(po.getId());
-        vo.setMovieId(po.getActivityId());
-        vo.setCinemaId(po.getVenueId());
-        vo.setHallName(po.getHallName());
-        vo.setShowDate(po.getShowDate());
-        vo.setShowTime(po.getShowTime());
-        vo.setEndTime(po.getEndTime());
-        vo.setLang(po.getLang());
-        vo.setTotalSeats(po.getTotalSeats());
-        // 优先从 Redis 获取实时库存
+    private SessionSummary toSummary(ActivitySessionPO po) {
+        VenuePO venue = venueMapper.selectById(po.getVenueId());
+        return toSummary(po, venue);
+    }
+
+    private SessionSummary toSummary(ActivitySessionPO po, VenuePO venue) {
         int redisStock = stockService.getStock(po.getId());
-        vo.setAvailableSeats(redisStock >= 0 ? redisStock : po.getAvailableSeats());
-        vo.setPrice(po.getPrice());
-        return vo;
+        return SessionSummary.from(po, venue, redisStock >= 0 ? redisStock : po.getAvailableSeats());
     }
 
     // ==================== 影院详情页专用 ====================
@@ -223,43 +212,44 @@ public class ActivitySessionService {
     /**
      * 获取场馆详情
      */
-    public VenuePO getVenueById(Long cinemaId) {
-        return venueMapper.selectById(cinemaId);
+    public VenuePO getVenueById(Long venueId) {
+        return venueMapper.selectById(venueId);
     }
 
     /**
      * 查询某场馆有排片的活动ID列表
      */
-    public List<Long> getActivityIdsByVenue(Long cinemaId) {
-        return activitySessionMapper.selectMovieIdsByCinema(cinemaId, LocalDate.now().toString());
+    public List<Long> getActivityIdsByVenue(Long venueId) {
+        return activitySessionMapper.selectMovieIdsByCinema(venueId, LocalDate.now().toString());
     }
 
     /**
      * 查询场馆某活动某日的场次
      */
-    public List<ScheduleVO> getVenueActivitySessions(Long cinemaId, Long movieId, String showDate) {
+    public List<SessionSummary> getVenueActivitySessions(Long venueId, Long activityId, String showDate) {
         if (showDate == null || showDate.isEmpty()) {
             showDate = LocalDate.now().toString();
         }
         String finalShowDate = showDate;
-        String cacheKey = CINEMA_SCHEDULE_LIST_CACHE_PREFIX + cinemaId + ":" + movieId + ":" + finalShowDate;
+        String cacheKey = CINEMA_SCHEDULE_LIST_CACHE_PREFIX + venueId + ":" + activityId + ":" + finalShowDate;
+        VenuePO venue = venueMapper.selectById(venueId);
         return cacheService.<List<ActivitySessionPO>>get(cacheKey,
-                        () -> activitySessionMapper.selectByCinemaAndMovieAndDate(cinemaId, movieId, finalShowDate))
-                .stream().map(this::toVO).toList();
+                        () -> activitySessionMapper.selectByCinemaAndMovieAndDate(venueId, activityId, finalShowDate))
+                .stream().map(session -> toSummary(session, venue)).toList();
     }
 
     /**
      * 查询场馆某活动有排片的日期列表
      */
-    public List<String> getVenueActivityAvailableDates(Long cinemaId, Long movieId) {
-        String cacheKey = CINEMA_SCHEDULE_DATES_CACHE_PREFIX + cinemaId + ":" + movieId;
+    public List<String> getVenueActivityAvailableDates(Long venueId, Long activityId) {
+        String cacheKey = CINEMA_SCHEDULE_DATES_CACHE_PREFIX + venueId + ":" + activityId;
         return cacheService.get(cacheKey,
-                () -> activitySessionMapper.selectAvailableDatesByCinemaAndMovie(cinemaId, movieId, LocalDate.now().toString()));
+                () -> activitySessionMapper.selectAvailableDatesByCinemaAndMovie(venueId, activityId, LocalDate.now().toString()));
     }
 
-    private List<ActivitySessionPO> getCachedSchedules(Long movieId, String showDate) {
-        String cacheKey = SCHEDULE_LIST_CACHE_PREFIX + movieId + ":" + showDate;
-        return cacheService.get(cacheKey, () -> activitySessionMapper.selectByMovieAndDate(movieId, showDate));
+    private List<ActivitySessionPO> getCachedSchedules(Long activityId, String showDate) {
+        String cacheKey = SCHEDULE_LIST_CACHE_PREFIX + activityId + ":" + showDate;
+        return cacheService.get(cacheKey, () -> activitySessionMapper.selectByMovieAndDate(activityId, showDate));
     }
 
     private void evictScheduleReadCaches() {

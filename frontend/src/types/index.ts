@@ -1,32 +1,37 @@
-// ==================== 电影相关 ====================
-export interface MovieItem {
+// ==================== 活动相关 ====================
+export interface ActivityItem {
   id: number
-  nm: string
-  img: string
-  sc: number | string
-  star: string
-  showInfo: string
-  wish: number
-  globalReleased: boolean
-  cat?: string
-  enm?: string
-  dur?: number
-  src?: string
-  pubDesc?: string
-  dra?: string
-  vd?: string
-  photos?: string[]
-  pn?: number
-  comingTitle?: string
+  name: string
+  coverUrl: string
+  score?: number | string
+  category?: string
+  source?: string
+  duration?: number
+  publishDescription?: string
+  followCount?: number
+  released?: boolean
   releaseYear?: number
+  showInfo?: string
+  comingTitle?: string
 }
 
-// ==================== 票房相关 ====================
-export interface BoxOfficeItem {
+export interface ActivityDetail {
   id: number
-  title: string
-  amount: number
-  unit: string
+  name: string
+  englishName?: string
+  coverUrl: string
+  score?: number | string
+  category?: string
+  source?: string
+  duration?: number
+  publishDescription?: string
+  description?: string
+  followCount?: number
+  released?: boolean
+  releaseYear?: number
+  videoUrl?: string
+  photos?: string[]
+  photoCount?: number
 }
 
 // ==================== 城市相关 ====================
@@ -41,57 +46,59 @@ export interface CityGroup {
   items: CityItem[]
 }
 
-// ==================== 影院相关 ====================
-export interface CinemaItem {
-  id: number
-  nm: string
-  addr: string
-  distance: string
-  tag: {
-    allowRefund: boolean
-    endorse: boolean
-    snack: boolean
-    vipTag: string
-    hallType: string[]
-  }
-  promotion: {
-    cardPromotionTag: string
-  }
+// ==================== 场馆相关 ====================
+export interface VenueFeatures {
+  allowRefund?: boolean
+  endorse?: boolean
+  snack?: boolean
+  vipTag?: string
+  hallTypes?: string[]
 }
 
-export interface CinemaListParams {
-  offset?: number
-  day: string
-  cityId: number
-  brandId?: number
-  serviceId?: number
-  hallType?: number
-  areaId?: number
-  districtId?: number
+export interface VenuePromotion {
+  cardPromotionTag?: string
+}
+
+export interface VenueItem {
+  id: number
+  name: string
+  address?: string
+  distance?: string
+  features?: VenueFeatures
+  promotion?: VenuePromotion
+}
+
+export interface VenueDetail {
+  id: number
+  name: string
+  address?: string
+  allowRefund?: boolean
+  endorse?: boolean
+  snack?: boolean
+  vipTag?: string
+  hallTypes?: string[]
 }
 
 // ==================== 场次相关 ====================
-export interface ScheduleItem {
-  id: number
-  movieId: number
-  cinemaId: number
-  cinemaNm?: string
-  cinemaAddr?: string
+export interface SessionItem {
+  sessionId: number
+  activityId: number
+  venueId: number
+  venueName?: string
+  venueAddress?: string
   hallName: string
   showDate: string
   showTime: string
   endTime: string
-  lang: string
+  language?: string
   totalSeats: number
   availableSeats: number
   price: number
 }
 
-export interface CinemaScheduleGroup {
-  cinemaId: number
-  cinemaName: string
-  cinemaAddr: string
-  schedules: ScheduleItem[]
+export interface VenueSessionGroup {
+  venue: VenueItem
+  sessions: SessionItem[]
 }
 
 // ==================== 座位相关 ====================
@@ -156,13 +163,27 @@ export interface CreateOrderRequest {
 
 // ==================== 搜索相关 ====================
 export interface SearchParams {
-  kw: string | number
+  keyword: string | number
   cityId: number
-  stype: number
+  type?: 'all' | 'activity' | 'venue'
+}
+
+export interface SearchResponse {
+  activities?: {
+    list: ActivityItem[]
+  }
+  venues?: {
+    list: VenueItem[]
+  }
+}
+
+export interface FollowStatus {
+  followed: boolean
+  followCount: number
 }
 
 // ==================== Tab 类型 ====================
-export type Tab = 'home' | 'movies' | 'cinemas'
+export type Tab = 'home' | 'activities' | 'venues'
 
 // ==================== 用户相关 ====================
 export interface UserAccountInfo {

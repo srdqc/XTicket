@@ -2,66 +2,67 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import MovieCard from '@/components/MovieCard'
+import ActivityCard from '@/components/ActivityCard'
 import Loading from '@/components/Loading'
 import api from '@/lib/api'
-import type { MovieItem } from '@/types'
+import type { ActivityItem } from '@/types'
 
-type SubTab = 'playing' | 'coming'
+type SubTab = 'featured' | 'more'
 type SortType = 'hot' | 'time' | 'rating'
 
-const GENRES = ['全部', '爱情', '喜剧', '动画', '剧情', '恐怖', '惊悚', '科幻', '动作', '悬疑', '犯罪', '冒险', '战争', '奇幻']
-const REGIONS = ['全部', '大陆', '美国', '韩国', '日本', '中国香港', '中国台湾', '泰国', '印度', '法国', '英国', '俄罗斯']
+const CATEGORIES = ['全部', '爱情', '喜剧', '动画', '剧情', '恐怖', '惊悚', '科幻', '动作', '悬疑', '犯罪', '冒险', '战争', '奇幻']
+const SOURCES = ['全部', '大陆', '美国', '韩国', '日本', '中国香港', '中国台湾', '泰国', '印度', '法国', '英国', '俄罗斯']
 const YEARS = ['全部', '2026', '2025', '2024', '2023', '2022', '2021', '2020', '2019', '2018']
 
-export default function MoviesTab() {
+export default function ActivitiesTab() {
   const router = useRouter()
-  const [subTab, setSubTab] = useState<SubTab>('playing')
+  const [subTab, setSubTab] = useState<SubTab>('featured')
   const [sortType, setSortType] = useState<SortType>('hot')
-  const [activeGenre, setActiveGenre] = useState('全部')
-  const [activeRegion, setActiveRegion] = useState('全部')
+  const [activeCategory, setActiveCategory] = useState('全部')
+  const [activeSource, setActiveSource] = useState('全部')
   const [activeYear, setActiveYear] = useState('全部')
-  const [movies, setMovies] = useState<MovieItem[]>([])
+  const [activities, setActivities] = useState<ActivityItem[]>([])
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
 
-  const fetchMovies = useCallback((p: number = 1) => {
+  const fetchActivities = useCallback((p: number = 1) => {
     setLoading(true)
     const params: any = {
-      movieStatus: subTab === 'playing' ? 1 : 0,
-      sortBy: sortType,
+      status: subTab === 'featured' ? 1 : 0,
+      sort: sortType,
       page: p,
       pageSize: 30,
     }
-    if (activeGenre !== '全部') params.cat = activeGenre
-    if (activeRegion !== '全部') params.src = activeRegion
+    if (activeCategory !== '全部') params.category = activeCategory
+    if (activeSource !== '全部') params.source = activeSource
     if (activeYear !== '全部') params.year = parseInt(activeYear)
 
-    api.filterMovies(params)
+    api.getActivities(params)
       .then((res) => {
-        const list = res.movies || []
+        const data = res.data || {}
+        const list = data.activities || []
         if (p === 1) {
-          setMovies(list)
+          setActivities(list)
         } else {
-          setMovies((prev) => [...prev, ...list])
+          setActivities((prev) => [...prev, ...list])
         }
-        setTotal(res.total || 0)
-        setHasMore(res.hasMore || false)
+        setTotal(data.total || 0)
+        setHasMore(data.hasMore || false)
         setPage(p)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [subTab, sortType, activeGenre, activeRegion, activeYear])
+  }, [subTab, sortType, activeCategory, activeSource, activeYear])
 
   useEffect(() => {
-    fetchMovies(1)
-  }, [fetchMovies])
+    fetchActivities(1)
+  }, [fetchActivities])
 
   const handleLoadMore = () => {
     if (hasMore && !loading) {
-      fetchMovies(page + 1)
+      fetchActivities(page + 1)
     }
   }
 
@@ -71,24 +72,24 @@ export default function MoviesTab() {
       <div className="bg-[#47464a] h-[60px] flex items-center justify-center mb-8 -mx-[calc((100vw-1200px)/2)] min-w-[1200px]">
         <div className="flex space-x-12">
           <button
-            onClick={() => { setSubTab('playing'); setPage(1) }}
+            onClick={() => { setSubTab('featured'); setPage(1) }}
             className={`h-[60px] px-2 font-medium ${
-              subTab === 'playing'
+              subTab === 'featured'
                 ? 'text-primary border-b-2 border-primary'
                 : 'text-gray-300 hover:text-white transition-colors'
             }`}
           >
-            正在热映
+            精选活动
           </button>
           <button
-            onClick={() => { setSubTab('coming'); setPage(1) }}
+            onClick={() => { setSubTab('more'); setPage(1) }}
             className={`h-[60px] px-2 font-medium ${
-              subTab === 'coming'
+              subTab === 'more'
                 ? 'text-primary border-b-2 border-primary'
                 : 'text-gray-300 hover:text-white transition-colors'
             }`}
           >
-            即将上映
+          更多活动
           </button>
         </div>
       </div>
@@ -97,15 +98,15 @@ export default function MoviesTab() {
       <div className="mb-8 space-y-4 border border-gray-200 p-4 rounded-sm text-sm text-gray-600">
         <FilterRow
           label="类型："
-          options={GENRES}
-          active={activeGenre}
-          onSelect={setActiveGenre}
+          options={CATEGORIES}
+          active={activeCategory}
+          onSelect={setActiveCategory}
         />
         <FilterRow
-          label="区域："
-          options={REGIONS}
-          active={activeRegion}
-          onSelect={setActiveRegion}
+          label="来源："
+          options={SOURCES}
+          active={activeSource}
+          onSelect={setActiveSource}
         />
         <FilterRow
           label="年代："
@@ -122,36 +123,36 @@ export default function MoviesTab() {
           <SortRadio label="按时间排序" active={sortType === 'time'} onClick={() => setSortType('time')} />
           <SortRadio label="按评价排序" active={sortType === 'rating'} onClick={() => setSortType('rating')} />
         </div>
-        <span className="text-sm text-gray-400">共 {total} 部</span>
+        <span className="text-sm text-gray-400">共 {total} 个</span>
       </div>
 
       {/* Grid */}
-      {loading && movies.length === 0 ? (
+      {loading && activities.length === 0 ? (
         <Loading />
-      ) : movies.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">暂无相关电影</div>
+      ) : activities.length === 0 ? (
+        <div className="text-center py-20 text-gray-400">暂无相关活动</div>
       ) : (
         <>
           <div className="grid grid-cols-6 gap-x-8 gap-y-10">
-            {movies.map((movie) => (
+            {activities.map((activity) => (
               <div
-                key={movie.id}
+                key={activity.id}
                 className="flex flex-col items-center cursor-pointer"
-                onClick={() => router.push(`/movie-detail?movieId=${movie.id}`)}
+                onClick={() => router.push(`/activities/${activity.id}`)}
               >
-                <MovieCard movie={movie} showButton={false} />
+                <ActivityCard activity={activity} showButton={false} />
                 <div className="text-center w-full mt-[-20px]">
                   <h3 className="truncate font-medium text-gray-800 text-[16px] mb-1">
-                    {movie.nm}
+                    {activity.name}
                   </h3>
-                  {movie.globalReleased && movie.sc ? (
+                  {activity.released && activity.score ? (
                     <div className="text-gold text-sm italic">
-                      {Number(movie.sc).toFixed(1)}
+                      {Number(activity.score).toFixed(1)}
                     </div>
-                  ) : movie.globalReleased ? (
+                  ) : activity.released ? (
                     <div className="text-gray-400 text-sm">暂无评分</div>
                   ) : (
-                    <div className="text-gold text-sm">{movie.wish}人想看</div>
+                    <div className="text-gold text-sm">{activity.followCount}人关注</div>
                   )}
                 </div>
               </div>

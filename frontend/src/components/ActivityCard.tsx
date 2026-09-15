@@ -1,28 +1,30 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { imgUrlReplace } from '@/lib/utils'
-import type { MovieItem } from '@/types'
+import type { ActivityItem } from '@/types'
 
-interface MovieCardProps {
-  movie: MovieItem
+interface ActivityCardProps {
+  activity: ActivityItem
   showButton?: boolean
 }
 
-export default function MovieCard({ movie, showButton = true }: MovieCardProps) {
-  const isPlaying = movie.globalReleased
+export default function ActivityCard({ activity, showButton = true }: ActivityCardProps) {
+  const router = useRouter()
+  const isReleased = activity.released
 
   return (
     <div className="w-[160px] flex flex-col mb-6 group cursor-pointer">
       <div className="relative w-full h-[220px] overflow-hidden bg-gray-200 shadow-sm">
         <img
-          src={imgUrlReplace(movie.img)}
-          alt={movie.nm}
+          src={imgUrlReplace(activity.coverUrl)}
+          alt={activity.name}
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
         />
         {/* Tags Overlay */}
-        {movie.cat && (
+        {activity.category && (
           <div className="absolute top-1 left-1 flex flex-col space-y-1">
-            {movie.cat.split(',').slice(0, 2).map((tag, idx) => (
+            {activity.category.split(',').slice(0, 2).map((tag, idx) => (
               <span
                 key={idx}
                 className={`text-[10px] text-white px-1 py-0.5 rounded-sm font-bold shadow-sm ${
@@ -35,14 +37,14 @@ export default function MovieCard({ movie, showButton = true }: MovieCardProps) 
           </div>
         )}
 
-        {/* Rating / Want-to-watch Overlay at Bottom */}
+        {/* Rating / Want-to-follow Overlay at Bottom */}
         <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black/80 to-transparent p-2 pt-6 flex justify-between items-end">
           <span className="text-white text-xs font-medium truncate w-full">
-            {movie.nm}
+            {activity.name}
           </span>
-          {isPlaying && movie.sc ? (
+          {isReleased && activity.score ? (
             <span className="text-gold font-bold italic text-base absolute bottom-1 right-2">
-              {Number(movie.sc).toFixed(1)}
+              {Number(activity.score).toFixed(1)}
             </span>
           ) : null}
         </div>
@@ -51,26 +53,24 @@ export default function MovieCard({ movie, showButton = true }: MovieCardProps) 
       {/* Below Image Content */}
       {showButton && (
         <div className="mt-2 flex items-center justify-between text-sm">
-          {isPlaying ? (
+          {isReleased ? (
             <button className="w-full py-1.5 mt-1 border border-gray-200 text-primary rounded hover:bg-primary hover:text-white transition-colors text-sm">
               购票
             </button>
           ) : (
             <div className="w-full">
               <div className="flex justify-between items-center text-xs text-gray-500 mb-1">
-                <span className="text-gold">{movie.wish}人想看</span>
+                <span className="text-gold">{activity.followCount}人关注</span>
               </div>
-              <div className="flex space-x-2">
-                <button className="flex-1 py-1.5 border border-gray-200 text-gold rounded hover:bg-gray-50 text-xs">
-                  预告片
-                </button>
-                <button className="flex-1 py-1.5 border border-gray-200 text-secondary rounded hover:bg-gray-50 text-xs">
-                  预售
-                </button>
-              </div>
-              {movie.comingTitle && (
+              <button
+                onClick={() => router.push(`/activities/${activity.id}`)}
+                className="w-full py-1.5 border border-gray-200 text-secondary rounded hover:bg-gray-50 text-xs"
+              >
+                查看详情
+              </button>
+              {activity.comingTitle && (
                 <div className="text-center text-xs text-gray-400 mt-2">
-                  {movie.comingTitle}
+                  {activity.comingTitle}
                 </div>
               )}
             </div>

@@ -21,7 +21,7 @@ export default function Header({ activeTab, setActiveTab }: HeaderProps) {
 
   const handleSearch = () => {
     if (searchText.trim()) {
-      router.push(`/search?kw=${encodeURIComponent(searchText)}`)
+      router.push(`/search?keyword=${encodeURIComponent(searchText)}`)
     }
   }
 
@@ -36,9 +36,9 @@ export default function Header({ activeTab, setActiveTab }: HeaderProps) {
             onClick={() => setActiveTab('home')}
           >
             <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center mr-2">
-              <span className="text-white font-bold text-xl">猫</span>
+              <span className="text-white font-bold text-xl">X</span>
             </div>
-            <span className="text-2xl font-bold text-primary">猫眼电影</span>
+            <span className="text-2xl font-bold text-primary">XTicket</span>
           </div>
 
           {/* City Selector */}
@@ -57,8 +57,8 @@ export default function Header({ activeTab, setActiveTab }: HeaderProps) {
           <nav className="flex h-full space-x-8 ml-8">
             {([
               { key: 'home', label: '首页' },
-              { key: 'movies', label: '电影' },
-              { key: 'cinemas', label: '影院' },
+              { key: 'activities', label: '活动' },
+              { key: 'venues', label: '场馆' },
             ] as { key: Tab; label: string }[]).map((item) => (
               <button
                 key={item.key}
@@ -72,9 +72,6 @@ export default function Header({ activeTab, setActiveTab }: HeaderProps) {
                 {item.label}
               </button>
             ))}
-            <button className="h-full px-4 text-lg font-medium text-gray-800 hover:text-primary">
-              演出
-            </button>
           </nav>
         </div>
 
@@ -90,7 +87,7 @@ export default function Header({ activeTab, setActiveTab }: HeaderProps) {
           <div className="relative">
             <input
               type="text"
-              placeholder="找影视剧、影人、影院"
+              placeholder="搜索活动、场馆"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}

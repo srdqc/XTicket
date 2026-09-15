@@ -8,7 +8,9 @@ import com.maoyan.common.constants.CacheConstants;
 import com.maoyan.dao.mapper.ActivityMapper;
 import com.maoyan.domain.enums.MovieStatusEnum;
 import com.maoyan.domain.model.po.ActivityPO;
-import com.maoyan.domain.model.vo.MovieVO;
+import com.maoyan.domain.model.vo.api.ActivityDetail;
+import com.maoyan.domain.model.vo.api.ActivityPageResponse;
+import com.maoyan.domain.model.vo.api.ActivitySummary;
 import com.maoyan.service.cache.MultiLevelCacheService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,7 +37,7 @@ public class ActivityService {
     /**
      * 获取热映活动列表（带缓存）
      */
-    public List<MovieVO> getHotActivities() {
+    public List<ActivitySummary> getHotActivities() {
         return cacheService.get(CacheConstants.HOT_MOVIES, () -> {
             log.info("从数据库加载热映活动列表");
             LambdaQueryWrapper<ActivityPO> wrapper = new LambdaQueryWrapper<>();
@@ -44,7 +46,7 @@ public class ActivityService {
                     .orderByAsc(ActivityPO::getSortOrder)
                     .orderByAsc(ActivityPO::getId);
             return activityMapper.selectList(wrapper).stream()
-                    .map(this::toVO)
+                    .map(this::toSummary)
                     .toList();
         });
     }
@@ -62,7 +64,7 @@ public class ActivityService {
     /**
      * 获取即将上映活动列表（带缓存）
      */
-    public List<MovieVO> getComingActivities() {
+    public List<ActivitySummary> getComingActivities() {
         return cacheService.get(CacheConstants.COMING_MOVIES, () -> {
             log.info("从数据库加载即将上映活动列表");
             LambdaQueryWrapper<ActivityPO> wrapper = new LambdaQueryWrapper<>();
@@ -71,7 +73,7 @@ public class ActivityService {
                     .orderByAsc(ActivityPO::getSortOrder)
                     .orderByAsc(ActivityPO::getId);
             return activityMapper.selectList(wrapper).stream()
-                    .map(this::toVO)
+                    .map(this::toSummary)
                     .toList();
         });
     }
@@ -89,7 +91,7 @@ public class ActivityService {
     /**
      * 获取最受期待活动列表（按关注人数排序前10）
      */
-    public List<MovieVO> getMostExpected() {
+    public List<ActivitySummary> getMostExpected() {
         return cacheService.get(CacheConstants.MOST_EXPECTED, () -> {
             log.info("从数据库加载最受期待活动列表");
             LambdaQueryWrapper<ActivityPO> wrapper = new LambdaQueryWrapper<>();
@@ -98,7 +100,7 @@ public class ActivityService {
                     .orderByDesc(ActivityPO::getWish)
                     .last("LIMIT 10");
             return activityMapper.selectList(wrapper).stream()
-                    .map(this::toVO)
+                    .map(this::toSummary)
                     .toList();
         });
     }
@@ -106,7 +108,7 @@ public class ActivityService {
     /**
      * 根据ID列表批量查询活动
      */
-    public List<MovieVO> getActivitiesByIds(List<Long> ids) {
+    public List<ActivitySummary> getActivitiesByIds(List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
             return Collections.emptyList();
         }
@@ -117,20 +119,20 @@ public class ActivityService {
         return ids.stream()
                 .map(poMap::get)
                 .filter(Objects::nonNull)
-                .map(this::toVO)
+                .map(this::toSummary)
                 .toList();
     }
 
     /**
      * 获取活动详情
      */
-    public MovieVO getActivityDetail(Long movieId) {
-        if (movieId == null) return null;
-        ActivityPO po = activityMapper.selectById(movieId);
+    public ActivityDetail getActivityDetail(Long activityId) {
+        if (activityId == null) return null;
+        ActivityPO po = activityMapper.selectById(activityId);
         if (po == null || po.getDeleted() == 1) {
             return null;
         }
-        return toDetailVO(po);
+        return toDetail(po);
     }
 
     /**
@@ -150,18 +152,18 @@ public class ActivityService {
     /**
      * 搜索活动
      */
-    public List<MovieVO> searchActivities(String keyword) {
+    public List<ActivitySummary> searchActivities(String keyword) {
         return activityMapper.searchByKeyword(keyword).stream()
-                .map(this::toVO)
+                .map(this::toSummary)
                 .toList();
     }
 
     /**
      * 活动筛选（按类型/地区/年份/状态，支持排序+分页）
      *
-     * @return { movies: MovieVO[], total: long, hasMore: boolean }
+     * @return Activity domain page response
      */
-    public Map<String, Object> filterActivities(Integer movieStatus, String cat, String src, Integer year,
+    public ActivityPageResponse filterActivities(Integer movieStatus, String cat, String src, Integer year,
                                              String sortBy, int page, int pageSize) {
         int offset = (page - 1) * pageSize;
         List<ActivityPO> poList = activityMapper.filterMovies(movieStatus, cat, src, year, sortBy, offset, pageSize + 1);
@@ -172,77 +174,24 @@ public class ActivityService {
             poList = poList.subList(0, pageSize);
         }
 
-        List<MovieVO> voList = poList.stream().map(this::toListVO).toList();
+        List<ActivitySummary> summaries = poList.stream().map(this::toSummary).toList();
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("movies", voList);
-        result.put("total", total);
-        result.put("hasMore", hasMore);
-        return result;
+        return ActivityPageResponse.of(summaries, total, hasMore);
     }
 
-    // ========== PO → VO 转换 ==========
-
-    /** 列表页VO（包含筛选所需的cat/src/releaseYear） */
-    private MovieVO toListVO(ActivityPO po) {
-        MovieVO vo = toVO(po);
-        vo.setCat(po.getCat());
-        vo.setSrc(po.getSrc());
-        vo.setReleaseYear(po.getReleaseYear());
-        vo.setDur(po.getDur());
-        vo.setPubDesc(po.getPubDesc());
-        return vo;
+    private ActivitySummary toSummary(ActivityPO po) {
+        return ActivitySummary.from(po);
     }
 
-    private MovieVO toVO(ActivityPO po) {
-        MovieVO vo = new MovieVO();
-        vo.setId(po.getId());
-        vo.setNm(po.getNm());
-        vo.setImg(po.getImg());
-        vo.setStar(po.getStar());
-        vo.setShowInfo(po.getShowInfo());
-        vo.setWish(po.getWish());
-        vo.setGlobalReleased(po.getGlobalReleased() != null && po.getGlobalReleased() == 1);
-        vo.setComingTitle(po.getComingTitle());
-
-        // 评分处理：已上映显示数字评分，未上映显示"暂无评分"
-        if (po.getGlobalReleased() != null && po.getGlobalReleased() == 1 && po.getSc() != null) {
-            vo.setSc(po.getSc());
-        } else {
-            vo.setSc("暂无评分");
-        }
-
-        return vo;
-    }
-
-    private MovieVO toDetailVO(ActivityPO po) {
-        MovieVO vo = toVO(po);
-        vo.setEnm(po.getEnm());
-        vo.setCat(po.getCat());
-        vo.setSrc(po.getSrc());
-        vo.setDur(po.getDur());
-        vo.setPubDesc(po.getPubDesc());
-        vo.setDra(po.getDra());
-        vo.setVd(po.getVd());
-        vo.setPn(po.getPn());
-        vo.setReleaseYear(po.getReleaseYear());
-
-        // 评分对详情页始终返回数字
-        if (po.getSc() != null) {
-            vo.setSc(po.getSc());
-        }
-
-        // 解析剧照JSON数组
+    private ActivityDetail toDetail(ActivityPO po) {
+        List<String> photos = Collections.emptyList();
         if (po.getPhotos() != null && !po.getPhotos().isEmpty()) {
             try {
-                List<String> photoList = objectMapper.readValue(po.getPhotos(), new TypeReference<>() {});
-                vo.setPhotos(photoList);
+                photos = objectMapper.readValue(po.getPhotos(), new TypeReference<>() {});
             } catch (JsonProcessingException e) {
                 log.warn("解析活动剧照JSON失败, movieId={}", po.getId(), e);
-                vo.setPhotos(Collections.emptyList());
             }
         }
-
-        return vo;
+        return ActivityDetail.from(po, photos);
     }
 }

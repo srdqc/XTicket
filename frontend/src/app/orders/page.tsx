@@ -67,7 +67,7 @@ export default function OrdersPage() {
             <Ticket className="w-16 h-16 text-gray-200 mx-auto mb-4" />
             <p className="text-gray-400">暂无订单</p>
             <button onClick={() => router.push('/')} className="mt-4 px-6 py-2 bg-primary text-white rounded-full text-sm">
-              去选电影
+              去选活动
             </button>
           </div>
         ) : (
@@ -77,7 +77,7 @@ export default function OrdersPage() {
               return (
                 <div key={order.orderNo} className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                   <div className="flex">
-                    {/* 电影海报 */}
+                    {/* 活动封面 */}
                     {order.movieImg && (
                       <div className="w-[100px] h-[140px] flex-shrink-0">
                         <img src={order.movieImg} alt={order.movieName} className="w-full h-full object-cover" />

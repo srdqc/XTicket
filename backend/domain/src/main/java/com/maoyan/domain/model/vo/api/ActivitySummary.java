@@ -1,7 +1,7 @@
 package com.maoyan.domain.model.vo.api;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.maoyan.domain.model.vo.MovieVO;
+import com.maoyan.domain.model.po.ActivityPO;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -24,24 +24,28 @@ public class ActivitySummary implements Serializable {
     private String showInfo;
     private String comingTitle;
 
-    public static ActivitySummary from(MovieVO vo) {
-        if (vo == null) {
+    public static ActivitySummary from(ActivityPO po) {
+        if (po == null) {
             return null;
         }
         ActivitySummary summary = new ActivitySummary();
-        summary.setId(vo.getId());
-        summary.setName(vo.getNm());
-        summary.setCoverUrl(vo.getImg());
-        summary.setScore(vo.getSc());
-        summary.setCategory(vo.getCat());
-        summary.setSource(vo.getSrc());
-        summary.setDuration(vo.getDur());
-        summary.setPublishDescription(vo.getPubDesc());
-        summary.setFollowCount(vo.getWish());
-        summary.setReleased(vo.getGlobalReleased());
-        summary.setReleaseYear(vo.getReleaseYear());
-        summary.setShowInfo(vo.getShowInfo());
-        summary.setComingTitle(vo.getComingTitle());
+        summary.setId(po.getId());
+        summary.setName(po.getNm());
+        summary.setCoverUrl(po.getImg());
+        if (po.getGlobalReleased() != null && po.getGlobalReleased() == 1 && po.getSc() != null) {
+            summary.setScore(po.getSc());
+        } else {
+            summary.setScore("暂无评分");
+        }
+        summary.setCategory(po.getCat());
+        summary.setSource(po.getSrc());
+        summary.setDuration(po.getDur());
+        summary.setPublishDescription(po.getPubDesc());
+        summary.setFollowCount(po.getWish());
+        summary.setReleased(po.getGlobalReleased() != null && po.getGlobalReleased() == 1);
+        summary.setReleaseYear(po.getReleaseYear());
+        summary.setShowInfo(po.getShowInfo());
+        summary.setComingTitle(po.getComingTitle());
         return summary;
     }
 }

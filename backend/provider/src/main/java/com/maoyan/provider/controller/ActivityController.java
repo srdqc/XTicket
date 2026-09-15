@@ -30,14 +30,12 @@ public class ActivityController {
             @RequestParam(defaultValue = "hot") String sort,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "30") int pageSize) {
-        return Result.ok(ActivityPageResponse.fromFilterResult(
-                activityService.filterActivities(status, category, source, year, sort, page, pageSize)
-        ));
+        return Result.ok(activityService.filterActivities(status, category, source, year, sort, page, pageSize));
     }
 
     @GetMapping("/{activityId}")
     public Result<ActivityDetail> getActivity(@PathVariable Long activityId) {
-        return Result.ok(ActivityDetail.from(activityService.getActivityDetail(activityId)));
+        return Result.ok(activityService.getActivityDetail(activityId));
     }
 
     @GetMapping("/{activityId}/sessions")
@@ -47,22 +45,16 @@ public class ActivityController {
             @RequestParam(required = false) Long venueId,
             @RequestParam(required = false) String showDate) {
         if (venueId != null) {
-            return Result.ok(activitySessionService.getVenueActivitySessions(venueId, activityId, showDate).stream()
-                    .map(SessionSummary::from)
-                    .toList());
+            return Result.ok(activitySessionService.getVenueActivitySessions(venueId, activityId, showDate));
         }
-        return Result.ok(activitySessionService.getSessions(activityId, showDate).stream()
-                .map(SessionSummary::from)
-                .toList());
+        return Result.ok(activitySessionService.getSessions(activityId, showDate));
     }
 
     @GetMapping("/{activityId}/sessions/grouped-by-venue")
     public Result<List<VenueSessionGroup>> getSessionsGroupedByVenue(
             @PathVariable Long activityId,
             @RequestParam(required = false) String showDate) {
-        return Result.ok(activitySessionService.getSessionsByVenue(activityId, showDate).stream()
-                .map(VenueSessionGroup::fromLegacyGroup)
-                .toList());
+        return Result.ok(activitySessionService.getSessionsByVenue(activityId, showDate));
     }
 
     @GetMapping("/{activityId}/available-dates")
