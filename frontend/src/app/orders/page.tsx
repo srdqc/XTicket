@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Ticket, XCircle, Clock, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, Ticket, XCircle, Clock, CheckCircle2, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import Loading from '@/components/Loading'
 import api from '@/lib/api'
@@ -12,6 +12,7 @@ const statusConfig: Record<number, { label: string; color: string; icon: React.R
   0: { label: '待支付', color: 'text-amber-500', icon: <Clock className="w-4 h-4 text-amber-500" /> },
   1: { label: '已完成', color: 'text-green-500', icon: <CheckCircle2 className="w-4 h-4 text-green-500" /> },
   2: { label: '已取消', color: 'text-gray-400', icon: <XCircle className="w-4 h-4 text-gray-400" /> },
+  3: { label: '已退款', color: 'text-blue-600', icon: <Undo2 className="w-4 h-4 text-blue-600" /> },
 }
 
 export default function OrdersPage() {
@@ -46,6 +47,21 @@ export default function OrdersPage() {
 
   const handlePay = (orderNo: string) => {
     router.push(`/payment?orderNo=${orderNo}`)
+  }
+
+  const handleRefund = async (orderNo: string) => {
+    if (!confirm('确定申请整单退款吗？电子票将立即失效。')) return
+    try {
+      const res = await api.refundOrder(orderNo)
+      if (res.code === 200) {
+        toast.success('退款成功，积分已返还')
+        loadOrders()
+      } else {
+        toast.error(res.message || '退款失败')
+      }
+    } catch {
+      toast.error('退款失败')
+    }
   }
 
   if (loading) return <Loading />
@@ -104,6 +120,30 @@ export default function OrdersPage() {
                           <span className="text-xl font-bold text-primary">{order.totalPrice}</span>
                         </div>
                         <div className="flex gap-2">
+                          {order.status === 1 && (
+                            <>
+                              <button
+                                onClick={() => handleRefund(order.orderNo)}
+                                className="px-3 py-1 text-xs border border-gray-300 text-gray-600 rounded-full hover:bg-gray-50"
+                              >
+                                申请退款
+                              </button>
+                              <button
+                                onClick={() => router.push(`/tickets?orderNo=${encodeURIComponent(order.orderNo)}`)}
+                                className="px-3 py-1 text-xs border border-primary text-primary rounded-full hover:bg-red-50"
+                              >
+                                查看电子票
+                              </button>
+                            </>
+                          )}
+                          {order.status === 3 && (
+                            <button
+                              onClick={() => router.push(`/tickets?orderNo=${encodeURIComponent(order.orderNo)}`)}
+                              className="px-3 py-1 text-xs border border-gray-300 text-gray-500 rounded-full hover:bg-gray-50"
+                            >
+                              查看失效票
+                            </button>
+                          )}
                           {order.status === 0 && (
                             <>
                               <button

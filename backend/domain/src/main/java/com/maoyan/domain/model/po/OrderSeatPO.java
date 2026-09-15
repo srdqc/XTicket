@@ -35,5 +35,8 @@ public class OrderSeatPO implements Serializable {
     /** 座位标签(如"5排3座") */
     private String seatLabel;
 
+    /** 1=当前有效售座，NULL=退款后保留的历史售座 */
+    private Integer activeSaleMarker;
+
     private LocalDateTime createTime;
 }

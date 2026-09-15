@@ -36,6 +36,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -58,13 +59,15 @@ class PaymentServicePaymentRecordTest {
     private DistributedLockService lockService;
     @Mock
     private OrderClosureService orderClosureService;
+    @Mock
+    private TicketService ticketService;
 
     private PaymentService paymentService;
 
     @BeforeEach
     void setUp() {
         paymentService = new PaymentService(orderMapper, seatLockMapper, orderSeatMapper,
-                paymentRecordMapper, userMapper, lockService, orderClosureService);
+                paymentRecordMapper, userMapper, lockService, orderClosureService, ticketService);
         when(lockService.<OrderVO>executeWithBoundedLock(anyString(), anyLong(), anyLong(), any()))
                 .thenAnswer(invocation -> {
                     @SuppressWarnings("unchecked")
@@ -97,11 +100,16 @@ class PaymentServicePaymentRecordTest {
         assertThat(result.getRemainingPoints()).isEqualTo(390);
 
         verify(orderSeatMapper, times(2)).insert(any());
-        InOrder writes = inOrder(userMapper, orderMapper, seatLockMapper, paymentRecordMapper);
+        ArgumentCaptor<com.maoyan.domain.model.po.OrderSeatPO> seatCaptor =
+                ArgumentCaptor.forClass(com.maoyan.domain.model.po.OrderSeatPO.class);
+        verify(orderSeatMapper, times(2)).insert(seatCaptor.capture());
+        assertThat(seatCaptor.getAllValues()).allMatch(seat -> Integer.valueOf(1).equals(seat.getActiveSaleMarker()));
+        InOrder writes = inOrder(userMapper, orderMapper, seatLockMapper, paymentRecordMapper, ticketService);
         writes.verify(userMapper).deductPoints(1001L, 110);
         writes.verify(orderMapper).markOrderPaid(eq("MO_PAY_001"), any(LocalDateTime.class));
         writes.verify(seatLockMapper).markAsPurchased(eq("MO_PAY_001"), any(LocalDateTime.class));
         writes.verify(paymentRecordMapper).insert(any(PaymentRecordPO.class));
+        writes.verify(ticketService).issueTickets("MO_PAY_001");
     }
 
     @Test
@@ -116,6 +124,7 @@ class PaymentServicePaymentRecordTest {
 
         verify(paymentRecordMapper, never()).insert(any(PaymentRecordPO.class));
         verify(userMapper, never()).deductPoints(any(), anyInt());
+        verify(ticketService, never()).issueTickets(anyString());
     }
 
     @Test
@@ -168,6 +177,29 @@ class PaymentServicePaymentRecordTest {
 
         verify(paymentRecordMapper, never()).insert(any(PaymentRecordPO.class));
         verify(seatLockMapper, never()).markAsPurchased(anyString(), any(LocalDateTime.class));
+    }
+
+    @Test
+    void ticketIssuanceFailurePropagatesFromTransactionalPayment() throws Exception {
+        OrderPO order = pendingOrder("MO_PAY_006", new BigDecimal("65.00"));
+        when(orderMapper.selectOne(any(Wrapper.class))).thenReturn(order);
+        when(seatLockMapper.selectLocksByOrderNo("MO_PAY_006")).thenReturn(List.of(lock(2, 1)));
+        when(userMapper.selectById(1001L)).thenReturn(user(500));
+        when(userMapper.deductPoints(1001L, 65)).thenReturn(1);
+        when(orderMapper.markOrderPaid(eq("MO_PAY_006"), any(LocalDateTime.class))).thenReturn(1);
+        doThrow(new IllegalStateException("ticket persistence failed"))
+                .when(ticketService).issueTickets("MO_PAY_006");
+
+        assertThatThrownBy(() -> paymentService.payOrder(1001L, "MO_PAY_006"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ticket persistence failed");
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatusEnum.PENDING.getCode());
+        verify(paymentRecordMapper).insert(any(PaymentRecordPO.class));
+        verify(ticketService).issueTickets("MO_PAY_006");
+        assertThat(PaymentService.class.getMethod("payOrder", Long.class, String.class)
+                .getAnnotation(org.springframework.transaction.annotation.Transactional.class)
+                .rollbackFor()).contains(Exception.class);
     }
 
     private static OrderPO pendingOrder(String orderNo, BigDecimal totalPrice) {

@@ -130,6 +130,7 @@ CREATE TABLE IF NOT EXISTS sys_user (
     user_nick      VARCHAR(100),
     user_head_img  VARCHAR(500),
     points         INT DEFAULT 0        COMMENT '用户积分(1积分=1元)',
+    role           VARCHAR(32) NOT NULL DEFAULT 'USER' COMMENT 'USER/CHECKIN_STAFF',
     create_time    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     update_time    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted        INT DEFAULT 0,
@@ -175,6 +176,7 @@ CREATE TABLE IF NOT EXISTS ticket_order (
     expire_time     TIMESTAMP     NULL          COMMENT '支付截止时间',
     pay_time        TIMESTAMP     NULL          COMMENT '支付时间',
     cancel_time     TIMESTAMP     NULL          COMMENT '取消时间',
+    refund_time     TIMESTAMP     NULL          COMMENT '退款时间',
     create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted         INT           DEFAULT 0,
@@ -198,6 +200,23 @@ CREATE TABLE IF NOT EXISTS payment_record (
     deleted         INT           DEFAULT 0,
     UNIQUE INDEX uq_payment_record_payment_no (payment_no),
     UNIQUE INDEX uq_payment_record_order_no (order_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS refund_record (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    refund_no       VARCHAR(64)   NOT NULL      COMMENT '退款记录编号',
+    order_no        VARCHAR(64)   NOT NULL      COMMENT '订单编号',
+    payment_no      VARCHAR(64)   NOT NULL      COMMENT '原支付记录编号',
+    user_id         BIGINT        NOT NULL      COMMENT '用户ID',
+    amount          DECIMAL(10,2) NOT NULL      COMMENT '退款金额',
+    points          INT           NOT NULL      COMMENT '返还积分',
+    status          VARCHAR(20)   NOT NULL      COMMENT '退款状态: SUCCESS',
+    refunded_at     TIMESTAMP     NOT NULL      COMMENT '退款成功时间',
+    create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted         INT           DEFAULT 0,
+    UNIQUE INDEX uq_refund_record_refund_no (refund_no),
+    UNIQUE INDEX uq_refund_record_order_no (order_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS activity_follow (
@@ -252,10 +271,33 @@ CREATE TABLE IF NOT EXISTS order_seat (
     row_num         INT           NOT NULL      COMMENT '行号',
     col_num         INT           NOT NULL      COMMENT '列号',
     seat_label      VARCHAR(20)   NOT NULL      COMMENT '座位标签(如5排3座)',
+    active_sale_marker TINYINT    NULL DEFAULT 1 COMMENT '1=当前有效售座 NULL=退款历史售座',
     create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_order_seat_order (order_id),
     INDEX idx_order_seat_schedule (schedule_id),
-    UNIQUE INDEX idx_order_seat_unique (schedule_id, row_num, col_num)
+    UNIQUE INDEX idx_order_seat_active_unique (schedule_id, row_num, col_num, active_sale_marker)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS electronic_ticket (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ticket_no       VARCHAR(40) NOT NULL COMMENT '电子票业务编号',
+    order_seat_id   BIGINT      NOT NULL COMMENT '已确认订单座位ID',
+    order_no        VARCHAR(64) NOT NULL COMMENT '订单编号',
+    user_id         BIGINT      NOT NULL COMMENT '电子票所属用户ID',
+    session_id      BIGINT      NOT NULL COMMENT '活动场次ID',
+    status          INT         NOT NULL DEFAULT 0 COMMENT '0=已签发 1=已核销 2=已作废',
+    issued_at       TIMESTAMP   NOT NULL COMMENT '签发时间',
+    used_at         TIMESTAMP   NULL COMMENT '核销时间',
+    checked_by      BIGINT      NULL COMMENT '首次核销工作人员用户ID',
+    invalidated_at  TIMESTAMP   NULL COMMENT '作废时间',
+    create_time     TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP   DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted         INT         DEFAULT 0,
+    UNIQUE INDEX uq_electronic_ticket_no (ticket_no),
+    UNIQUE INDEX uq_electronic_ticket_order_seat (order_seat_id),
+    INDEX idx_electronic_ticket_user (user_id, status),
+    INDEX idx_electronic_ticket_order (order_no),
+    INDEX idx_electronic_ticket_session (session_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 

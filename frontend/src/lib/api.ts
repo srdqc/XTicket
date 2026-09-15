@@ -118,6 +118,10 @@ const api = {
   cancelOrder: (orderNo: string) =>
     authInstance.post(`/order/cancel/${orderNo}`).then((res) => res.data),
 
+  /** 整单积分退款 */
+  refundOrder: (orderNo: string) =>
+    authInstance.post(`/order/refund/${encodeURIComponent(orderNo)}`).then((res) => res.data),
+
   /** 查询用户订单列表 */
   getUserOrders: (params: { page?: number; size?: number }) =>
     authInstance.get('/order/list', { params }).then((res) => res.data),
@@ -131,6 +135,20 @@ const api = {
   /** 查询订单详情 */
   getOrderDetail: (params: { orderNo: string }) =>
     authInstance.get('/payment/orderDetail', { params }).then((res) => res.data),
+
+  // ==================== 电子票相关 ====================
+
+  /** 查询当前用户电子票 */
+  getTickets: (orderNo?: string) =>
+    authInstance.get('/tickets', { params: orderNo ? { orderNo } : undefined }).then((res) => res.data),
+
+  /** 查询当前用户单张电子票 */
+  getTicket: (ticketNo: string) =>
+    authInstance.get(`/tickets/${ticketNo}`).then((res) => res.data),
+
+  /** 工作人员核销电子票 */
+  checkInTicket: (ticketNo: string, sessionId: number) =>
+    authInstance.post(`/checkin/tickets/${encodeURIComponent(ticketNo)}`, { sessionId }).then((res) => res.data),
 
   // ==================== 认证相关 ====================
 

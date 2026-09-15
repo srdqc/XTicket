@@ -161,6 +161,38 @@ export interface CreateOrderRequest {
   seatsInfo: string
 }
 
+// ==================== 电子票相关 ====================
+export interface TicketItem {
+  ticketNo: string
+  orderNo: string
+  sessionId: number
+  status: number
+  statusDesc: string
+  issuedAt: string
+  usedAt?: string
+  activityName: string
+  venueName: string
+  hallName: string
+  showTime: string
+  seatLabel: string
+  rowNum: number
+  colNum: number
+}
+
+export interface CheckInResult {
+  ticketNo: string
+  sessionId: number
+  status: number
+  usedAt: string
+  firstCheckIn: boolean
+  alreadyUsed: boolean
+  activityName: string
+  venueName: string
+  hallName: string
+  showTime: string
+  seatLabel: string
+}
+
 // ==================== 搜索相关 ====================
 export interface SearchParams {
   keyword: string | number

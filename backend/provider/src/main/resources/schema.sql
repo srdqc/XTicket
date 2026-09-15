@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS sys_user (
     user_nick      VARCHAR(100),
     user_head_img  VARCHAR(500),
     points         INT DEFAULT 0        COMMENT '用户积分(1积分=1元)',
+    role           VARCHAR(32) NOT NULL DEFAULT 'USER' COMMENT 'USER/CHECKIN_STAFF',
     create_time    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     update_time    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted        INT DEFAULT 0
@@ -165,6 +166,7 @@ CREATE TABLE IF NOT EXISTS ticket_order (
     expire_time     TIMESTAMP     NULL          COMMENT '支付截止时间',
     pay_time        TIMESTAMP     NULL          COMMENT '支付时间',
     cancel_time     TIMESTAMP     NULL          COMMENT '取消时间',
+    refund_time     TIMESTAMP     NULL          COMMENT '退款时间',
     create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     deleted         INT           DEFAULT 0
@@ -185,6 +187,21 @@ CREATE TABLE IF NOT EXISTS payment_record (
 );
 
 -- 用户想看记录表
+CREATE TABLE IF NOT EXISTS refund_record (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    refund_no       VARCHAR(64)   NOT NULL,
+    order_no        VARCHAR(64)   NOT NULL,
+    payment_no      VARCHAR(64)   NOT NULL,
+    user_id         BIGINT        NOT NULL,
+    amount          DECIMAL(10,2) NOT NULL,
+    points          INT           NOT NULL,
+    status          VARCHAR(20)   NOT NULL,
+    refunded_at     TIMESTAMP     NOT NULL,
+    create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+    deleted         INT           DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS activity_follow (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id         BIGINT        NOT NULL      COMMENT '用户ID',
@@ -232,7 +249,25 @@ CREATE TABLE IF NOT EXISTS order_seat (
     row_num         INT           NOT NULL      COMMENT '行号',
     col_num         INT           NOT NULL      COMMENT '列号',
     seat_label      VARCHAR(20)   NOT NULL      COMMENT '座位标签(如5排3座)',
+    active_sale_marker TINYINT    NULL DEFAULT 1 COMMENT '1=当前有效售座 NULL=退款历史售座',
     create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS electronic_ticket (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ticket_no       VARCHAR(40) NOT NULL COMMENT '电子票业务编号',
+    order_seat_id   BIGINT      NOT NULL COMMENT '已确认订单座位ID',
+    order_no        VARCHAR(64) NOT NULL COMMENT '订单编号',
+    user_id         BIGINT      NOT NULL COMMENT '电子票所属用户ID',
+    session_id      BIGINT      NOT NULL COMMENT '活动场次ID',
+    status          INT         NOT NULL DEFAULT 0 COMMENT '0=已签发 1=已核销 2=已作废',
+    issued_at       TIMESTAMP   NOT NULL COMMENT '签发时间',
+    used_at         TIMESTAMP   NULL COMMENT '核销时间',
+    checked_by      BIGINT      NULL COMMENT '首次核销工作人员用户ID',
+    invalidated_at  TIMESTAMP   NULL COMMENT '作废时间',
+    create_time     TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    deleted         INT         DEFAULT 0
 );
 
 -- ==================== 索引 ====================
@@ -251,6 +286,8 @@ CREATE INDEX IF NOT EXISTS idx_order_no     ON ticket_order(order_no);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_ticket_order_lock_token ON ticket_order(lock_token);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_record_payment_no ON payment_record(payment_no);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_record_order_no ON payment_record(order_no);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_refund_record_refund_no ON refund_record(refund_no);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_refund_record_order_no ON refund_record(order_no);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_follow_unique ON activity_follow(user_id, activity_id);
 CREATE INDEX IF NOT EXISTS idx_hall_venue ON venue_hall(venue_id, deleted);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_hall_unique ON venue_hall(venue_id, hall_name, deleted);
@@ -261,5 +298,10 @@ CREATE INDEX IF NOT EXISTS idx_seat_lock_token ON seat_lock(lock_token);
 CREATE INDEX IF NOT EXISTS idx_seat_lock_expire ON seat_lock(lock_until, status);
 CREATE INDEX IF NOT EXISTS idx_order_seat_order ON order_seat(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_seat_schedule ON order_seat(schedule_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_order_seat_unique ON order_seat(schedule_id, row_num, col_num);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_order_seat_active_unique ON order_seat(schedule_id, row_num, col_num, active_sale_marker);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_electronic_ticket_no ON electronic_ticket(ticket_no);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_electronic_ticket_order_seat ON electronic_ticket(order_seat_id);
+CREATE INDEX IF NOT EXISTS idx_electronic_ticket_user ON electronic_ticket(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_electronic_ticket_order ON electronic_ticket(order_no);
+CREATE INDEX IF NOT EXISTS idx_electronic_ticket_session ON electronic_ticket(session_id, status);
 CREATE INDEX IF NOT EXISTS idx_activity_year ON activity(release_year, movie_status, deleted);

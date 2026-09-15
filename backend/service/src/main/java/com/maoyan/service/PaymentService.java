@@ -45,6 +45,7 @@ public class PaymentService {
     private final UserMapper userMapper;
     private final DistributedLockService lockService;
     private final OrderClosureService orderClosureService;
+    private final TicketService ticketService;
 
     @Autowired(required = false)
     private RocketMQTemplate rocketMQTemplate;
@@ -112,6 +113,7 @@ public class PaymentService {
         confirmOrderSeats(order, locks, now);
         seatLockMapper.markAsPurchased(orderNo, now);
         insertPaymentRecord(order, now);
+        ticketService.issueTickets(orderNo);
 
         order.setStatus(OrderStatusEnum.PAID.getCode());
         order.setPayTime(now);
@@ -155,6 +157,7 @@ public class PaymentService {
                 seat.setRowNum(lock.getRowNum());
                 seat.setColNum(lock.getColNum());
                 seat.setSeatLabel(lock.getRowNum() + "排" + lock.getColNum() + "座");
+                seat.setActiveSaleMarker(1);
                 seat.setCreateTime(now);
                 orderSeatMapper.insert(seat);
             }
