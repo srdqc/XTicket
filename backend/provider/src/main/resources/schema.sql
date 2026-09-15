@@ -235,6 +235,22 @@ CREATE TABLE IF NOT EXISTS order_seat (
     create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS electronic_ticket (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ticket_no       VARCHAR(40) NOT NULL COMMENT '电子票业务编号',
+    order_seat_id   BIGINT      NOT NULL COMMENT '已确认订单座位ID',
+    order_no        VARCHAR(64) NOT NULL COMMENT '订单编号',
+    user_id         BIGINT      NOT NULL COMMENT '电子票所属用户ID',
+    session_id      BIGINT      NOT NULL COMMENT '活动场次ID',
+    status          INT         NOT NULL DEFAULT 0 COMMENT '0=已签发 1=已核销 2=已作废',
+    issued_at       TIMESTAMP   NOT NULL COMMENT '签发时间',
+    used_at         TIMESTAMP   NULL COMMENT '核销时间',
+    invalidated_at  TIMESTAMP   NULL COMMENT '作废时间',
+    create_time     TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    deleted         INT         DEFAULT 0
+);
+
 -- ==================== 索引 ====================
 CREATE INDEX IF NOT EXISTS idx_activity_status ON activity(movie_status, deleted, sort_order);
 CREATE INDEX IF NOT EXISTS idx_activity_wish   ON activity(wish DESC);
@@ -262,4 +278,9 @@ CREATE INDEX IF NOT EXISTS idx_seat_lock_expire ON seat_lock(lock_until, status)
 CREATE INDEX IF NOT EXISTS idx_order_seat_order ON order_seat(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_seat_schedule ON order_seat(schedule_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_order_seat_unique ON order_seat(schedule_id, row_num, col_num);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_electronic_ticket_no ON electronic_ticket(ticket_no);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_electronic_ticket_order_seat ON electronic_ticket(order_seat_id);
+CREATE INDEX IF NOT EXISTS idx_electronic_ticket_user ON electronic_ticket(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_electronic_ticket_order ON electronic_ticket(order_no);
+CREATE INDEX IF NOT EXISTS idx_electronic_ticket_session ON electronic_ticket(session_id, status);
 CREATE INDEX IF NOT EXISTS idx_activity_year ON activity(release_year, movie_status, deleted);

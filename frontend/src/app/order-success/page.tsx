@@ -85,6 +85,15 @@ function OrderSuccessContent() {
 
       {/* 操作按钮 */}
       <div className="flex gap-4 mt-8">
+        {orderNo && (
+          <button
+            onClick={() => router.push(`/tickets?orderNo=${encodeURIComponent(orderNo)}`)}
+            className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-full hover:bg-red-600 transition-colors"
+          >
+            <Ticket className="w-4 h-4" />
+            查看电子票
+          </button>
+        )}
         <button
           onClick={() => router.push('/orders')}
           className="flex items-center gap-2 px-6 py-3 border border-gray-300 rounded-full text-gray-700 hover:bg-gray-100 transition-colors"
@@ -94,7 +103,7 @@ function OrderSuccessContent() {
         </button>
         <button
           onClick={() => router.push('/')}
-          className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-full hover:bg-red-600 transition-colors"
+          className="flex items-center gap-2 px-6 py-3 border border-gray-300 rounded-full text-gray-700 hover:bg-gray-100 transition-colors"
         >
           <Home className="w-4 h-4" />
           返回首页

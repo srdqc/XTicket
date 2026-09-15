@@ -258,6 +258,27 @@ CREATE TABLE IF NOT EXISTS order_seat (
     UNIQUE INDEX idx_order_seat_unique (schedule_id, row_num, col_num)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS electronic_ticket (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ticket_no       VARCHAR(40) NOT NULL COMMENT '电子票业务编号',
+    order_seat_id   BIGINT      NOT NULL COMMENT '已确认订单座位ID',
+    order_no        VARCHAR(64) NOT NULL COMMENT '订单编号',
+    user_id         BIGINT      NOT NULL COMMENT '电子票所属用户ID',
+    session_id      BIGINT      NOT NULL COMMENT '活动场次ID',
+    status          INT         NOT NULL DEFAULT 0 COMMENT '0=已签发 1=已核销 2=已作废',
+    issued_at       TIMESTAMP   NOT NULL COMMENT '签发时间',
+    used_at         TIMESTAMP   NULL COMMENT '核销时间',
+    invalidated_at  TIMESTAMP   NULL COMMENT '作废时间',
+    create_time     TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP   DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted         INT         DEFAULT 0,
+    UNIQUE INDEX uq_electronic_ticket_no (ticket_no),
+    UNIQUE INDEX uq_electronic_ticket_order_seat (order_seat_id),
+    INDEX idx_electronic_ticket_user (user_id, status),
+    INDEX idx_electronic_ticket_order (order_no),
+    INDEX idx_electronic_ticket_session (session_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 
 -- =====================================================
 -- 初始数据

@@ -104,6 +104,14 @@ export default function OrdersPage() {
                           <span className="text-xl font-bold text-primary">{order.totalPrice}</span>
                         </div>
                         <div className="flex gap-2">
+                          {order.status === 1 && (
+                            <button
+                              onClick={() => router.push(`/tickets?orderNo=${encodeURIComponent(order.orderNo)}`)}
+                              className="px-3 py-1 text-xs border border-primary text-primary rounded-full hover:bg-red-50"
+                            >
+                              查看电子票
+                            </button>
+                          )}
                           {order.status === 0 && (
                             <>
                               <button

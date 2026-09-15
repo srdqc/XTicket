@@ -132,6 +132,16 @@ const api = {
   getOrderDetail: (params: { orderNo: string }) =>
     authInstance.get('/payment/orderDetail', { params }).then((res) => res.data),
 
+  // ==================== 电子票相关 ====================
+
+  /** 查询当前用户电子票 */
+  getTickets: (orderNo?: string) =>
+    authInstance.get('/tickets', { params: orderNo ? { orderNo } : undefined }).then((res) => res.data),
+
+  /** 查询当前用户单张电子票 */
+  getTicket: (ticketNo: string) =>
+    authInstance.get(`/tickets/${ticketNo}`).then((res) => res.data),
+
   // ==================== 认证相关 ====================
 
   /** 用户登录 */
