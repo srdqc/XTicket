@@ -10,8 +10,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
-
 @Slf4j
 @RestController
 @RequestMapping("/api")
@@ -30,7 +28,6 @@ public class ApiSearchController {
             return Result.fail(400, "搜索类型不支持");
         }
         searchService.recordSearchAsync(keyword, cityId);
-        Map<String, Object> legacyResult = searchService.search(keyword, cityId);
-        return Result.ok(SearchResponse.fromLegacyResult(legacyResult, type));
+        return Result.ok(SearchResponse.fromSearchResult(searchService.search(keyword, cityId), type));
     }
 }

@@ -1,7 +1,8 @@
 package com.maoyan.domain.model.vo.api;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.maoyan.domain.model.vo.ScheduleVO;
+import com.maoyan.domain.model.po.ActivitySessionPO;
+import com.maoyan.domain.model.po.VenuePO;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -25,24 +26,24 @@ public class SessionSummary implements Serializable {
     private Integer availableSeats;
     private BigDecimal price;
 
-    public static SessionSummary from(ScheduleVO vo) {
-        if (vo == null) {
+    public static SessionSummary from(ActivitySessionPO po, VenuePO venue, Integer availableSeats) {
+        if (po == null) {
             return null;
         }
         SessionSummary summary = new SessionSummary();
-        summary.setSessionId(vo.getId());
-        summary.setActivityId(vo.getMovieId());
-        summary.setVenueId(vo.getCinemaId());
-        summary.setVenueName(vo.getCinemaNm());
-        summary.setVenueAddress(vo.getCinemaAddr());
-        summary.setHallName(vo.getHallName());
-        summary.setShowDate(vo.getShowDate());
-        summary.setShowTime(vo.getShowTime());
-        summary.setEndTime(vo.getEndTime());
-        summary.setLanguage(vo.getLang());
-        summary.setTotalSeats(vo.getTotalSeats());
-        summary.setAvailableSeats(vo.getAvailableSeats());
-        summary.setPrice(vo.getPrice());
+        summary.setSessionId(po.getId());
+        summary.setActivityId(po.getActivityId());
+        summary.setVenueId(po.getVenueId());
+        summary.setVenueName(venue == null ? null : venue.getNm());
+        summary.setVenueAddress(venue == null ? null : venue.getAddr());
+        summary.setHallName(po.getHallName());
+        summary.setShowDate(po.getShowDate());
+        summary.setShowTime(po.getShowTime());
+        summary.setEndTime(po.getEndTime());
+        summary.setLanguage(po.getLang());
+        summary.setTotalSeats(po.getTotalSeats());
+        summary.setAvailableSeats(availableSeats);
+        summary.setPrice(po.getPrice());
         return summary;
     }
 }

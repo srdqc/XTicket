@@ -14,7 +14,7 @@ function SeatSelectionContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const scheduleId = searchParams.get('scheduleId')
-  const movieId = searchParams.get('movieId')
+  const activityId = searchParams.get('activityId')
   const { isLogged } = useUserStore()
 
   const [layout, setLayout] = useState<SeatLayoutData | null>(null)
@@ -31,20 +31,20 @@ function SeatSelectionContent() {
 
     const loadData = async () => {
       try {
-        // 并行加载座位布局和电影详情
-        const [layoutRes, movieRes] = await Promise.all([
+        // 并行加载座位布局和活动详情
+        const [layoutRes, activityRes] = await Promise.all([
           api.getSeatLayout({ scheduleId: Number(scheduleId) }),
-          movieId ? api.getDetailMovie({ movieId }) : null,
+          activityId ? api.getActivityDetail(activityId) : null,
         ])
 
         setLayout(layoutRes.data || layoutRes)
-        if (movieRes) setMovieDetail(movieRes.detailMovie)
+        if (activityRes) setMovieDetail(activityRes.data)
 
-        // 加载场次信息
-        if (movieId) {
-          const scheduleRes = await api.getSchedules({ movieId: Number(movieId) })
-          const schedules = scheduleRes.data || []
-          const found = schedules.find((s: any) => s.id === Number(scheduleId))
+        // 加载场次信息（按 sessionId == scheduleId 匹配）
+        if (activityId) {
+          const scheduleRes = await api.getActivitySessions(Number(activityId))
+          const sessions = scheduleRes.data || []
+          const found = sessions.find((s: any) => s.sessionId === Number(scheduleId))
           if (found) setSchedule(found)
         }
       } catch (e) {
@@ -55,7 +55,7 @@ function SeatSelectionContent() {
     }
 
     loadData()
-  }, [scheduleId, movieId])
+  }, [scheduleId, activityId])
 
   // 点击座位
   const handleSeatClick = (seat: SeatInfo) => {
@@ -162,7 +162,7 @@ function SeatSelectionContent() {
       {/* 步骤指示 */}
       <div className="bg-white border-b border-gray-100 min-w-[1200px]">
         <div className="max-w-[1200px] mx-auto flex items-center justify-center py-4 gap-2 text-sm">
-          {['选择场次', '选择座位', '积分支付', '影院取票观影'].map((step, idx) => (
+          {['选择场次', '选择座位', '积分支付', '保存订单信息'].map((step, idx) => (
             <div key={step} className="flex items-center gap-2">
               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${idx <= 1 ? 'bg-primary text-white' : 'bg-gray-200 text-gray-500'}`}>
                 {idx + 1}
@@ -179,7 +179,7 @@ function SeatSelectionContent() {
         <div className="flex-1 bg-white rounded shadow-sm p-6">
           {layout ? (
             <>
-              {/* 影厅信息 */}
+              {/* 会场信息 */}
               <div className="text-center mb-6">
                 <h2 className="text-lg font-medium text-gray-800">{layout.hallName}</h2>
                 <span className="text-sm text-gray-400">{layout.hallType}</span>
@@ -261,14 +261,14 @@ function SeatSelectionContent() {
         {/* 右侧：选座信息 */}
         <div className="w-[320px] shrink-0">
           <div className="bg-white rounded shadow-sm p-6 sticky top-[100px]">
-            {/* 电影信息 */}
+            {/* 活动信息 */}
             {movieDetail && (
               <div className="flex gap-3 mb-6 pb-4 border-b border-gray-100">
-                <img src={imgUrlReplace(movieDetail.img)} alt={movieDetail.nm} className="w-16 h-22 rounded object-cover" />
+                <img src={imgUrlReplace(movieDetail.coverUrl)} alt={movieDetail.name} className="w-16 h-22 rounded object-cover" />
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-gray-800 truncate">{movieDetail.nm}</h3>
-                  {movieDetail.cat && <p className="text-xs text-gray-400 mt-1">{movieDetail.cat}</p>}
-                  {movieDetail.dur && <p className="text-xs text-gray-400">{movieDetail.dur}分钟</p>}
+                  <h3 className="font-medium text-gray-800 truncate">{movieDetail.name}</h3>
+                  {movieDetail.category && <p className="text-xs text-gray-400 mt-1">{movieDetail.category}</p>}
+                  {movieDetail.duration && <p className="text-xs text-gray-400">{movieDetail.duration}分钟</p>}
                 </div>
               </div>
             )}
@@ -277,7 +277,7 @@ function SeatSelectionContent() {
             {schedule && (
               <div className="mb-6 pb-4 border-b border-gray-100 text-sm text-gray-600">
                 <p>{schedule.showDate} {schedule.showTime} - {schedule.endTime}</p>
-                <p className="text-gray-400 mt-1">{schedule.hallName} / {schedule.lang}</p>
+                <p className="text-gray-400 mt-1">{schedule.hallName} / {schedule.language}</p>
               </div>
             )}
 

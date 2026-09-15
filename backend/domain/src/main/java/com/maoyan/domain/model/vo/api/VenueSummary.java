@@ -1,7 +1,7 @@
 package com.maoyan.domain.model.vo.api;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.maoyan.domain.model.vo.CinemaVO;
+import com.maoyan.domain.model.po.VenuePO;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -18,29 +18,27 @@ public class VenueSummary implements Serializable {
     private Features features;
     private Promotion promotion;
 
-    public static VenueSummary from(CinemaVO vo) {
-        if (vo == null) {
+    public static VenueSummary from(VenuePO po, List<String> hallTypes) {
+        if (po == null) {
             return null;
         }
         VenueSummary summary = new VenueSummary();
-        summary.setId(vo.getId());
-        summary.setName(vo.getNm());
-        summary.setAddress(vo.getAddr());
-        summary.setDistance(vo.getDistance());
-        if (vo.getTag() != null) {
-            Features features = new Features();
-            features.setAllowRefund(vo.getTag().getAllowRefund());
-            features.setEndorse(vo.getTag().getEndorse());
-            features.setSnack(vo.getTag().getSnack());
-            features.setVipTag(vo.getTag().getVipTag());
-            features.setHallTypes(vo.getTag().getHallType());
-            summary.setFeatures(features);
-        }
-        if (vo.getPromotion() != null) {
-            Promotion promotion = new Promotion();
-            promotion.setCardPromotionTag(vo.getPromotion().getCardPromotionTag());
-            summary.setPromotion(promotion);
-        }
+        summary.setId(po.getId());
+        summary.setName(po.getNm());
+        summary.setAddress(po.getAddr());
+        summary.setDistance(po.getDistance());
+
+        Features features = new Features();
+        features.setAllowRefund(po.getAllowRefund() != null && po.getAllowRefund() == 1);
+        features.setEndorse(po.getEndorse() != null && po.getEndorse() == 1);
+        features.setSnack(po.getSnack() != null && po.getSnack() == 1);
+        features.setVipTag(po.getVipTag());
+        features.setHallTypes(hallTypes);
+        summary.setFeatures(features);
+
+        Promotion promotion = new Promotion();
+        promotion.setCardPromotionTag(po.getCardPromotionTag());
+        summary.setPromotion(promotion);
         return summary;
     }
 

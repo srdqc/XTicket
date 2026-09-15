@@ -1,42 +1,42 @@
 'use client'
 
-import { Suspense, useState, useEffect } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, MapPin } from 'lucide-react'
 import Loading from '@/components/Loading'
-import TopIntro from '@/components/movie-detail/TopIntro'
-import StagePhoto from '@/components/movie-detail/StagePhoto'
+import TopIntro from '@/components/activity-detail/TopIntro'
+import StagePhoto from '@/components/activity-detail/StagePhoto'
 import api from '@/lib/api'
-import type { CinemaScheduleGroup, ScheduleItem } from '@/types'
+import type { ActivityDetail, VenueSessionGroup, SessionItem } from '@/types'
 
-function MovieDetailContent() {
+export default function ActivityDetailPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const movieId = searchParams.get('movieId')
+  const params = useParams()
+  const activityId = params.activityId as string
   const [isReady, setIsReady] = useState(false)
-  const [movieDetail, setMovieDetail] = useState<any>(null)
+  const [detail, setDetail] = useState<ActivityDetail | null>(null)
   const [showSchedule, setShowSchedule] = useState(false)
   const [dates, setDates] = useState<string[]>([])
   const [activeDate, setActiveDate] = useState('')
-  const [cinemaGroups, setCinemaGroups] = useState<CinemaScheduleGroup[]>([])
+  const [venueGroups, setVenueGroups] = useState<VenueSessionGroup[]>([])
   const [scheduleLoading, setScheduleLoading] = useState(false)
 
   useEffect(() => {
-    if (!movieId) return
+    if (!activityId) return
     api
-      .getDetailMovie({ movieId })
+      .getActivityDetail(activityId)
       .then((res) => {
-        setMovieDetail(res.detailMovie)
+        setDetail(res.data)
         setIsReady(true)
       })
       .catch(() => setIsReady(true))
-  }, [movieId])
+  }, [activityId])
 
   const loadDates = () => {
-    if (!movieId) return
-    api.getAvailableDates({ movieId: Number(movieId) })
+    if (!activityId) return
+    api.getActivityAvailableDates(activityId)
       .then((res) => {
-        const dateList = res.data || res || []
+        const dateList = res.data || []
         setDates(dateList)
         if (dateList.length > 0) {
           setActiveDate(dateList[0])
@@ -47,11 +47,11 @@ function MovieDetailContent() {
   }
 
   const loadSchedules = (date: string) => {
-    if (!movieId) return
+    if (!activityId) return
     setScheduleLoading(true)
-    api.getSchedulesByCinema({ movieId: Number(movieId), showDate: date })
+    api.getActivitySessionsGroupedByVenue(activityId, { showDate: date })
       .then((res) => {
-        setCinemaGroups(res.data || [])
+        setVenueGroups(res.data || [])
       })
       .catch(() => {})
       .finally(() => setScheduleLoading(false))
@@ -71,8 +71,8 @@ function MovieDetailContent() {
     loadSchedules(date)
   }
 
-  const handleSelectSchedule = (schedule: ScheduleItem) => {
-    router.push(`/seat-selection?scheduleId=${schedule.id}&movieId=${movieId}`)
+  const handleSelectSession = (session: SessionItem) => {
+    router.push(`/seat-selection?scheduleId=${session.sessionId}&activityId=${activityId}`)
   }
 
   const formatDateLabel = (dateStr: string) => {
@@ -89,24 +89,24 @@ function MovieDetailContent() {
   }
 
   if (!isReady) return <Loading />
-  if (!movieDetail) return <div className="text-center py-20 text-gray-400">未找到电影信息</div>
+  if (!detail) return <div className="text-center py-20 text-gray-400">未找到活动信息</div>
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-200 min-w-[1200px]">
         <div className="max-w-[1200px] mx-auto h-[60px] flex items-center gap-4">
           <ArrowLeft className="w-6 h-6 text-gray-500 cursor-pointer hover:text-primary" onClick={() => router.push('/')} />
-          <h1 className="text-lg font-medium">{movieDetail.nm}</h1>
+          <h1 className="text-lg font-medium">{detail.name}</h1>
         </div>
       </div>
 
       <div className="max-w-[1200px] mx-auto mt-6 bg-white rounded shadow-sm">
-        <TopIntro movieDetail={movieDetail} />
-        {movieDetail.photos && <StagePhoto photos={movieDetail.photos} photoTotal={movieDetail.pn || 0} />}
+        <TopIntro activityDetail={detail} />
+        {detail.photos && <StagePhoto photos={detail.photos} photoTotal={detail.photoCount || 0} />}
 
         <div className="px-8 py-6 border-t border-gray-100">
           <button onClick={handleShowSchedule} className="px-8 py-3 bg-primary text-white rounded-full text-base hover:bg-red-600 transition-colors">
-            {showSchedule ? '收起排片' : '特惠购票'}
+            {showSchedule ? '收起场次' : '查看场次'}
           </button>
         </div>
 
@@ -124,43 +124,43 @@ function MovieDetailContent() {
 
             {scheduleLoading ? (
               <Loading />
-            ) : cinemaGroups.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">当日暂无排片</div>
+            ) : venueGroups.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">当日暂无场次</div>
             ) : (
               <div className="space-y-6">
-                {cinemaGroups.map((group) => (
-                  <div key={group.cinemaId} className="border border-gray-200 rounded-lg overflow-hidden">
+                {venueGroups.map((group) => (
+                  <div key={group.venue.id} className="border border-gray-200 rounded-lg overflow-hidden">
                     <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-                      <h3 className="font-medium text-gray-800 text-base">{group.cinemaName}</h3>
-                      {group.cinemaAddr && (
+                      <h3 className="font-medium text-gray-800 text-base">{group.venue.name}</h3>
+                      {group.venue.address && (
                         <div className="flex items-center text-sm text-gray-500 mt-1">
                           <MapPin className="w-3.5 h-3.5 mr-1" />
-                          <span>{group.cinemaAddr}</span>
+                          <span>{group.venue.address}</span>
                         </div>
                       )}
                     </div>
                     <div className="divide-y divide-gray-100">
-                      {group.schedules.map((schedule) => (
-                        <div key={schedule.id} className="flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors">
+                      {group.sessions.map((session) => (
+                        <div key={session.sessionId} className="flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors">
                           <div className="flex items-center gap-8">
                             <div className="text-center">
-                              <div className="text-lg font-bold text-gray-800">{schedule.showTime}</div>
-                              <div className="text-xs text-gray-400">{schedule.endTime}散场</div>
+                              <div className="text-lg font-bold text-gray-800">{session.showTime}</div>
+                              <div className="text-xs text-gray-400">{session.endTime}结束</div>
                             </div>
                             <div className="text-sm text-gray-600">
                               <div className="flex items-center gap-2">
-                                <span>{schedule.lang}</span>
+                                <span>{session.language}</span>
                                 <span className="text-gray-300">|</span>
-                                <span>{schedule.hallName}</span>
+                                <span>{session.hallName}</span>
                               </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-6">
                             <div className="text-right">
                               <span className="text-xs text-primary">¥</span>
-                              <span className="text-xl font-bold text-primary">{schedule.price}</span>
+                              <span className="text-xl font-bold text-primary">{session.price}</span>
                             </div>
-                            <button onClick={() => handleSelectSchedule(schedule)} className="px-6 py-2 bg-primary text-white rounded-full text-sm hover:bg-red-600 transition-colors">
+                            <button onClick={() => handleSelectSession(session)} className="px-6 py-2 bg-primary text-white rounded-full text-sm hover:bg-red-600 transition-colors">
                               选座购票
                             </button>
                           </div>
@@ -175,13 +175,5 @@ function MovieDetailContent() {
         )}
       </div>
     </div>
-  )
-}
-
-export default function MovieDetailPage() {
-  return (
-    <Suspense fallback={<Loading />}>
-      <MovieDetailContent />
-    </Suspense>
   )
 }

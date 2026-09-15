@@ -49,9 +49,7 @@ public class VenueController {
         if (activityIds.isEmpty()) {
             return Result.ok(Collections.emptyList());
         }
-        return Result.ok(activityService.getActivitiesByIds(activityIds).stream()
-                .map(ActivitySummary::from)
-                .toList());
+        return Result.ok(activityService.getActivitiesByIds(activityIds));
     }
 
     @GetMapping("/{venueId}/activities/{activityId}/available-dates")

@@ -1,7 +1,7 @@
 package com.maoyan.domain.model.vo.api;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.maoyan.domain.model.vo.MovieVO;
+import com.maoyan.domain.model.po.ActivityPO;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -28,27 +28,27 @@ public class ActivityDetail implements Serializable {
     private List<String> photos;
     private Integer photoCount;
 
-    public static ActivityDetail from(MovieVO vo) {
-        if (vo == null) {
+    public static ActivityDetail from(ActivityPO po, List<String> photos) {
+        if (po == null) {
             return null;
         }
         ActivityDetail detail = new ActivityDetail();
-        detail.setId(vo.getId());
-        detail.setName(vo.getNm());
-        detail.setEnglishName(vo.getEnm());
-        detail.setCoverUrl(vo.getImg());
-        detail.setScore(vo.getSc());
-        detail.setCategory(vo.getCat());
-        detail.setSource(vo.getSrc());
-        detail.setDuration(vo.getDur());
-        detail.setPublishDescription(vo.getPubDesc());
-        detail.setDescription(vo.getDra());
-        detail.setFollowCount(vo.getWish());
-        detail.setReleased(vo.getGlobalReleased());
-        detail.setReleaseYear(vo.getReleaseYear());
-        detail.setVideoUrl(vo.getVd());
-        detail.setPhotos(vo.getPhotos());
-        detail.setPhotoCount(vo.getPn());
+        detail.setId(po.getId());
+        detail.setName(po.getNm());
+        detail.setEnglishName(po.getEnm());
+        detail.setCoverUrl(po.getImg());
+        detail.setScore(po.getSc());
+        detail.setCategory(po.getCat());
+        detail.setSource(po.getSrc());
+        detail.setDuration(po.getDur());
+        detail.setPublishDescription(po.getPubDesc());
+        detail.setDescription(po.getDra());
+        detail.setFollowCount(po.getWish());
+        detail.setReleased(po.getGlobalReleased() != null && po.getGlobalReleased() == 1);
+        detail.setReleaseYear(po.getReleaseYear());
+        detail.setVideoUrl(po.getVd());
+        detail.setPhotos(photos);
+        detail.setPhotoCount(po.getPn());
         return detail;
     }
 }

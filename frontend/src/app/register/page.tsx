@@ -39,9 +39,9 @@ export default function RegisterPage() {
       <div className="w-[400px] bg-white rounded-lg shadow-lg p-8">
         <div className="flex items-center justify-center mb-8">
           <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center mr-2">
-            <span className="text-white font-bold text-xl">猫</span>
+            <span className="text-white font-bold text-xl">X</span>
           </div>
-          <span className="text-2xl font-bold text-primary">猫眼电影</span>
+          <span className="text-2xl font-bold text-primary">XTicket</span>
         </div>
         <h2 className="text-xl font-medium text-center mb-6">注 册</h2>
         <div className="space-y-4">

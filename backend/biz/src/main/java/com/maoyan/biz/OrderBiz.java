@@ -29,8 +29,8 @@ public class OrderBiz {
             if (schedule != null) {
                 var movieDetail = activityService.getActivityDetail(schedule.getActivityId());
                 if (movieDetail != null) {
-                    orderVO.setMovieName(movieDetail.getNm());
-                    orderVO.setMovieImg(movieDetail.getImg());
+                    orderVO.setMovieName(movieDetail.getName());
+                    orderVO.setMovieImg(movieDetail.getCoverUrl());
                 }
             }
         } catch (Exception e) {

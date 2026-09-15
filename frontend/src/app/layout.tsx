@@ -3,8 +3,8 @@ import { Toaster } from 'sonner'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: '猫眼电影 - 娱乐看猫眼',
-  description: '仿猫眼电影PC端 - Next.js 14',
+  title: 'XTicket - 高校活动票务平台',
+  description: '面向高校综合活动的票务交易平台',
 }
 
 export default function RootLayout({

@@ -1,13 +1,11 @@
 package com.maoyan.domain.model.vo.api;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.maoyan.domain.model.vo.MovieVO;
 import lombok.Data;
 
 import java.io.Serializable;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -17,17 +15,11 @@ public class ActivityPageResponse implements Serializable {
     private Long total;
     private Boolean hasMore;
 
-    @SuppressWarnings("unchecked")
-    public static ActivityPageResponse fromFilterResult(Map<String, Object> source) {
+    public static ActivityPageResponse of(List<ActivitySummary> activities, long total, boolean hasMore) {
         ActivityPageResponse response = new ActivityPageResponse();
-        List<MovieVO> movies = source == null ? Collections.emptyList() : (List<MovieVO>) source.get("movies");
-        response.setActivities(movies == null ? Collections.emptyList() : movies.stream()
-                .map(ActivitySummary::from)
-                .toList());
-        Object total = source == null ? null : source.get("total");
-        response.setTotal(total instanceof Number number ? number.longValue() : 0L);
-        Object hasMore = source == null ? null : source.get("hasMore");
-        response.setHasMore(hasMore instanceof Boolean value ? value : Boolean.FALSE);
+        response.setActivities(activities == null ? Collections.emptyList() : activities);
+        response.setTotal(total);
+        response.setHasMore(hasMore);
         return response;
     }
 }

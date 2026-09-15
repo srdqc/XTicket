@@ -8,8 +8,8 @@ import com.maoyan.common.constants.CacheConstants;
 import com.maoyan.dao.mapper.*;
 import com.maoyan.domain.model.dto.CinemaQueryDTO;
 import com.maoyan.domain.model.po.*;
-import com.maoyan.domain.model.vo.CinemaVO;
 import com.maoyan.domain.model.vo.FilterItemVO;
+import com.maoyan.domain.model.vo.api.VenueSummary;
 import com.maoyan.service.cache.MultiLevelCacheService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -45,7 +45,7 @@ public class VenueService {
     /**
      * 查询场馆列表（支持多维过滤 + 分页）
      */
-    public List<CinemaVO> getVenueList(CinemaQueryDTO query) {
+    public List<VenueSummary> getVenueList(CinemaQueryDTO query) {
         log.info("查询场馆列表: cityId={}, offset={}, brandId={}, districtId={}",
                 query.getCityId(), query.getOffset(), query.getBrandId(), query.getDistrictId());
 
@@ -57,7 +57,7 @@ public class VenueService {
         }
 
         List<VenuePO> poList = venueMapper.selectCinemaList(query);
-        return poList.stream().map(this::toVO).toList();
+        return poList.stream().map(this::toSummary).toList();
     }
 
     /**
@@ -107,9 +107,9 @@ public class VenueService {
     /**
      * 搜索场馆
      */
-    public List<CinemaVO> searchVenues(String keyword, Long cityId) {
+    public List<VenueSummary> searchVenues(String keyword, Long cityId) {
         return venueMapper.searchByKeyword(keyword, cityId).stream()
-                .map(this::toVO)
+                .map(this::toSummary)
                 .toList();
     }
 
@@ -180,38 +180,15 @@ public class VenueService {
     /**
      * PO → VO
      */
-    private CinemaVO toVO(VenuePO po) {
-        CinemaVO vo = new CinemaVO();
-        vo.setId(po.getId());
-        vo.setNm(po.getNm());
-        vo.setAddr(po.getAddr());
-        vo.setDistance(po.getDistance());
-
-        // 构建 tag
-        CinemaVO.Tag tag = new CinemaVO.Tag();
-        tag.setAllowRefund(po.getAllowRefund() != null && po.getAllowRefund() == 1);
-        tag.setEndorse(po.getEndorse() != null && po.getEndorse() == 1);
-        tag.setSnack(po.getSnack() != null && po.getSnack() == 1);
-        tag.setVipTag(po.getVipTag());
-
-        // 解析厅型JSON
+    private VenueSummary toSummary(VenuePO po) {
+        List<String> hallTypes = Collections.emptyList();
         if (po.getHallTypesJson() != null && !po.getHallTypesJson().isEmpty()) {
             try {
-                tag.setHallType(objectMapper.readValue(po.getHallTypesJson(), new TypeReference<>() {}));
+                hallTypes = objectMapper.readValue(po.getHallTypesJson(), new TypeReference<>() {});
             } catch (JsonProcessingException e) {
                 log.warn("解析场馆厅型JSON失败, cinemaId={}", po.getId(), e);
-                tag.setHallType(Collections.emptyList());
             }
-        } else {
-            tag.setHallType(Collections.emptyList());
         }
-        vo.setTag(tag);
-
-        // 构建 promotion
-        CinemaVO.Promotion promotion = new CinemaVO.Promotion();
-        promotion.setCardPromotionTag(po.getCardPromotionTag());
-        vo.setPromotion(promotion);
-
-        return vo;
+        return VenueSummary.from(po, hallTypes);
     }
 }

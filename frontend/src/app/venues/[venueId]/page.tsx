@@ -1,94 +1,83 @@
 'use client'
 
-import { Suspense, useState, useEffect } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import Loading from '@/components/Loading'
 import api from '@/lib/api'
-import type { MovieItem, ScheduleItem } from '@/types'
+import type { ActivityItem, VenueDetail, SessionItem } from '@/types'
 
-interface CinemaInfo {
-  id: number
-  nm: string
-  addr: string
-  allowRefund: boolean
-  endorse: boolean
-  snack: boolean
-  vipTag: string
-  hallTypes: string[]
-}
-
-function CinemaDetailContent() {
+export default function VenueDetailPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const cinemaId = searchParams.get('cinemaId')
+  const params = useParams()
+  const venueId = params.venueId as string
 
-  const [cinemaInfo, setCinemaInfo] = useState<CinemaInfo | null>(null)
-  const [movies, setMovies] = useState<MovieItem[]>([])
-  const [selectedMovieId, setSelectedMovieId] = useState<number | null>(null)
+  const [venue, setVenue] = useState<VenueDetail | null>(null)
+  const [activities, setActivities] = useState<ActivityItem[]>([])
+  const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null)
   const [dates, setDates] = useState<string[]>([])
   const [activeDate, setActiveDate] = useState('')
-  const [schedules, setSchedules] = useState<ScheduleItem[]>([])
+  const [sessions, setSessions] = useState<SessionItem[]>([])
   const [loading, setLoading] = useState(true)
   const [scheduleLoading, setScheduleLoading] = useState(false)
 
-  // 加载影院信息 + 电影列表
+  // 加载场馆信息 + 活动列表
   useEffect(() => {
-    if (!cinemaId) return
-    const cid = Number(cinemaId)
+    if (!venueId) return
+    const vid = Number(venueId)
     Promise.all([
-      api.getCinemaDetail({ cinemaId: cid }),
-      api.getCinemaMovies({ cinemaId: cid }),
+      api.getVenueDetail(vid),
+      api.getVenueActivities(vid),
     ])
-      .then(([cinemaRes, moviesRes]) => {
-        setCinemaInfo(cinemaRes.data || cinemaRes)
-        const movieList = moviesRes.data || moviesRes || []
-        setMovies(movieList)
-        if (movieList.length > 0) {
-          setSelectedMovieId(movieList[0].id)
+      .then(([venueRes, activitiesRes]) => {
+        setVenue(venueRes.data || null)
+        const activityList = activitiesRes.data || []
+        setActivities(activityList)
+        if (activityList.length > 0) {
+          setSelectedActivityId(activityList[0].id)
         }
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [cinemaId])
+  }, [venueId])
 
-  // 选中电影变化 → 加载日期
+  // 选中活动变化 → 加载日期
   useEffect(() => {
-    if (!cinemaId || !selectedMovieId) return
-    api.getCinemaAvailableDates({ cinemaId: Number(cinemaId), movieId: selectedMovieId })
+    if (!venueId || !selectedActivityId) return
+    api.getVenueActivityAvailableDates(Number(venueId), selectedActivityId)
       .then((res) => {
-        const dateList = res.data || res || []
+        const dateList = res.data || []
         setDates(dateList)
         if (dateList.length > 0) {
           setActiveDate(dateList[0])
-          loadSchedules(dateList[0])
+          loadSessions(dateList[0])
         } else {
           setDates([])
-          setSchedules([])
+          setSessions([])
         }
       })
       .catch(() => {
         setDates([])
-        setSchedules([])
+        setSessions([])
       })
-  }, [cinemaId, selectedMovieId])
+  }, [venueId, selectedActivityId])
 
-  const loadSchedules = (date: string) => {
-    if (!cinemaId || !selectedMovieId) return
+  const loadSessions = (date: string) => {
+    if (!venueId || !selectedActivityId) return
     setScheduleLoading(true)
-    api.getCinemaSchedules({ cinemaId: Number(cinemaId), movieId: selectedMovieId, showDate: date })
-      .then((res) => setSchedules(res.data || []))
-      .catch(() => setSchedules([]))
+    api.getActivitySessions(selectedActivityId, { venueId: Number(venueId), showDate: date })
+      .then((res) => setSessions(res.data || []))
+      .catch(() => setSessions([]))
       .finally(() => setScheduleLoading(false))
   }
 
   const handleDateSelect = (date: string) => {
     setActiveDate(date)
-    loadSchedules(date)
+    loadSessions(date)
   }
 
-  const handleSelectSchedule = (schedule: ScheduleItem) => {
-    router.push(`/seat-selection?scheduleId=${schedule.id}&movieId=${selectedMovieId}`)
+  const handleSelectSession = (session: SessionItem) => {
+    router.push(`/seat-selection?scheduleId=${session.sessionId}&activityId=${selectedActivityId}`)
   }
 
   const formatDateLabel = (dateStr: string) => {
@@ -104,21 +93,21 @@ function CinemaDetailContent() {
     return `${weekdays[d.getDay()]} ${month}月${day}日`
   }
 
-  const selectedMovie = movies.find((m) => m.id === selectedMovieId) || null
+  const selectedActivity = activities.find((a) => a.id === selectedActivityId) || null
 
   if (loading) return <Loading />
-  if (!cinemaInfo) return <div className="text-center py-20 text-gray-400">影院不存在</div>
+  if (!venue) return <div className="text-center py-20 text-gray-400">场馆不存在</div>
 
   // 服务标签
   const services: { tag: string; desc: string; color: string }[] = []
-  if (cinemaInfo.allowRefund) services.push({ tag: '退', desc: '未取票用户放映前可退票', color: 'orange' })
-  if (cinemaInfo.endorse) services.push({ tag: '改签', desc: '未取票用户放映前可改签', color: 'orange' })
-  if (cinemaInfo.snack) services.push({ tag: '小吃', desc: '提供小吃饮品服务', color: 'blue' })
-  cinemaInfo.hallTypes?.forEach((h) => services.push({ tag: h, desc: `${h}影厅`, color: 'blue' }))
+  if (venue.allowRefund) services.push({ tag: '退', desc: '活动开始前可取消', color: 'orange' })
+  if (venue.endorse) services.push({ tag: '改签', desc: '活动开始前可调整', color: 'orange' })
+  if (venue.snack) services.push({ tag: '小吃', desc: '提供小吃饮品服务', color: 'blue' })
+  venue.hallTypes?.forEach((h) => services.push({ tag: h, desc: `${h}会场`, color: 'blue' }))
 
   return (
     <div className="min-h-screen bg-white pb-20">
-      {/* 影院信息头部 */}
+      {/* 场馆信息头部 */}
       <div className="w-full bg-[#392f59] text-white py-8 min-w-[1200px]">
         <div className="max-w-[1200px] mx-auto px-4 flex gap-8">
           <div className="flex-1">
@@ -127,13 +116,13 @@ function CinemaDetailContent() {
                 className="w-6 h-6 cursor-pointer hover:text-gray-300 shrink-0"
                 onClick={() => router.back()}
               />
-              <h1 className="text-2xl font-bold">{cinemaInfo.nm}</h1>
+              <h1 className="text-2xl font-bold">{venue.name}</h1>
             </div>
-            <p className="text-gray-300 text-sm mb-2">{cinemaInfo.addr}</p>
+            <p className="text-gray-300 text-sm mb-2">{venue.address}</p>
 
             {services.length > 0 && (
               <div className="mt-4">
-                <h3 className="font-bold text-sm mb-2">影院服务</h3>
+                <h3 className="font-bold text-sm mb-2">场馆服务</h3>
                 <div className="space-y-1.5">
                   {services.map((s, idx) => (
                     <div key={idx} className="flex text-xs items-center">
@@ -160,35 +149,35 @@ function CinemaDetailContent() {
         {/* 面包屑 */}
         <div className="text-sm text-gray-500 mb-6">
           <span className="cursor-pointer hover:text-primary" onClick={() => router.push('/')}>
-            猫眼电影
+            XTicket
           </span>
           {' > '}
           <span className="cursor-pointer hover:text-primary" onClick={() => router.back()}>
-            影院
+            场馆
           </span>
           {' > '}
-          <span className="text-gray-800">{cinemaInfo.nm}</span>
+          <span className="text-gray-800">{venue.name}</span>
         </div>
 
-        {/* 电影横向滑块 */}
-        {movies.length > 0 && (
+        {/* 活动横向滑块 */}
+        {activities.length > 0 && (
           <div className="relative w-full bg-gray-50 rounded-lg overflow-hidden mb-6">
             {/* 背景模糊 */}
-            {selectedMovie && (
+            {selectedActivity && (
               <div
                 className="absolute inset-0 bg-cover bg-center blur-2xl opacity-20"
-                style={{ backgroundImage: `url(${selectedMovie.img})` }}
+                style={{ backgroundImage: `url(${selectedActivity.coverUrl})` }}
               />
             )}
 
             <div className="relative z-10 flex items-center py-6 px-4">
               <div className="flex items-end gap-5 overflow-x-auto hide-scrollbar px-8 py-2 mx-auto">
-                {movies.map((movie) => {
-                  const isSelected = movie.id === selectedMovieId
+                {activities.map((activity) => {
+                  const isSelected = activity.id === selectedActivityId
                   return (
                     <div
-                      key={movie.id}
-                      onClick={() => setSelectedMovieId(movie.id)}
+                      key={activity.id}
+                      onClick={() => setSelectedActivityId(activity.id)}
                       className={`flex-shrink-0 transition-all duration-300 cursor-pointer border-2 rounded overflow-hidden ${
                         isSelected
                           ? 'w-[120px] h-[170px] border-white shadow-xl scale-110 z-10'
@@ -196,9 +185,9 @@ function CinemaDetailContent() {
                       }`}
                     >
                       <img
-                        src={movie.img}
+                        src={activity.coverUrl}
                         className="w-full h-full object-cover"
-                        alt={movie.nm}
+                        alt={activity.name}
                       />
                     </div>
                   )
@@ -208,21 +197,20 @@ function CinemaDetailContent() {
           </div>
         )}
 
-        {/* 选中电影信息 */}
-        {selectedMovie && (
+        {/* 选中活动信息 */}
+        {selectedActivity && (
           <div className="text-center border-b border-gray-200 pb-6 mb-6">
             <div className="flex items-center justify-center gap-3 mb-1">
-              <h2 className="text-2xl font-bold text-gray-800">{selectedMovie.nm}</h2>
-              {selectedMovie.sc && Number(selectedMovie.sc) > 0 && (
+              <h2 className="text-2xl font-bold text-gray-800">{selectedActivity.name}</h2>
+              {selectedActivity.score && Number(selectedActivity.score) > 0 && (
                 <span className="text-[#ff9900] text-xl font-bold">
-                  {Number(selectedMovie.sc).toFixed(1)}分
+                  {Number(selectedActivity.score).toFixed(1)}分
                 </span>
               )}
             </div>
             <div className="text-sm text-gray-500 space-x-4">
-              {selectedMovie.cat && <span>类型：{selectedMovie.cat}</span>}
-              {selectedMovie.dur && <span>时长：{selectedMovie.dur}分钟</span>}
-              {selectedMovie.star && <span>主演：{selectedMovie.star}</span>}
+              {selectedActivity.category && <span>类型：{selectedActivity.category}</span>}
+              {selectedActivity.duration && <span>时长：{selectedActivity.duration}分钟</span>}
             </div>
           </div>
         )}
@@ -249,38 +237,38 @@ function CinemaDetailContent() {
         {/* 排片表格 */}
         {scheduleLoading ? (
           <Loading />
-        ) : schedules.length === 0 ? (
+        ) : sessions.length === 0 ? (
           <div className="text-center py-16 text-gray-400">
-            {movies.length === 0 ? '该影院暂无排片' : '当日暂无排片'}
+            {activities.length === 0 ? '该场馆暂无场次' : '当日暂无场次'}
           </div>
         ) : (
           <div className="w-full">
             <table className="w-full">
               <thead className="bg-gray-50 h-12 text-gray-500 font-normal text-sm">
                 <tr>
-                  <th className="text-left pl-8 w-[18%]">放映时间</th>
+                  <th className="text-left pl-8 w-[18%]">场次时间</th>
                   <th className="text-left w-[15%]">语言版本</th>
-                  <th className="text-left w-[15%]">放映厅</th>
+                  <th className="text-left w-[15%]">会场</th>
                   <th className="text-left w-[15%]">售价（元）</th>
                   <th className="text-right pr-8">选座购票</th>
                 </tr>
               </thead>
               <tbody>
-                {schedules.map((item, idx) => (
+                {sessions.map((session, idx) => (
                   <tr
-                    key={item.id}
+                    key={session.sessionId}
                     className={`h-20 ${idx % 2 === 0 ? 'bg-white' : 'bg-[#f9f9f9]'}`}
                   >
                     <td className="pl-8">
-                      <div className="text-xl font-bold text-gray-900">{item.showTime}</div>
-                      <div className="text-xs text-gray-400">{item.endTime}散场</div>
+                      <div className="text-xl font-bold text-gray-900">{session.showTime}</div>
+                      <div className="text-xs text-gray-400">{session.endTime}结束</div>
                     </td>
-                    <td className="text-gray-700">{item.lang}</td>
-                    <td className="text-gray-700">{item.hallName}</td>
-                    <td className="text-primary font-bold text-lg">¥{item.price}</td>
+                    <td className="text-gray-700">{session.language}</td>
+                    <td className="text-gray-700">{session.hallName}</td>
+                    <td className="text-primary font-bold text-lg">¥{session.price}</td>
                     <td className="text-right pr-8">
                       <button
-                        onClick={() => handleSelectSchedule(item)}
+                        onClick={() => handleSelectSession(session)}
                         className="bg-white border border-primary text-primary hover:bg-primary hover:text-white transition rounded-full px-6 py-1.5 text-sm font-medium shadow-sm"
                       >
                         选座购票
@@ -294,13 +282,5 @@ function CinemaDetailContent() {
         )}
       </div>
     </div>
-  )
-}
-
-export default function CinemaDetailPage() {
-  return (
-    <Suspense fallback={<Loading />}>
-      <CinemaDetailContent />
-    </Suspense>
   )
 }

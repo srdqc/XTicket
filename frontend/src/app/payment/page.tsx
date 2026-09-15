@@ -139,7 +139,7 @@ function PaymentContent() {
 
       <div className="bg-white border-b border-gray-100 min-w-[1200px]">
         <div className="max-w-[1200px] mx-auto flex items-center justify-center py-4 gap-2 text-sm">
-          {['选择场次', '选择座位', '积分支付', '影院取票观影'].map((step, idx) => (
+          {['选择场次', '选择座位', '积分支付', '保存订单信息'].map((step, idx) => (
             <div key={step} className="flex items-center gap-2">
               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${idx <= 2 ? 'bg-primary text-white' : 'bg-gray-200 text-gray-500'}`}>{idx + 1}</span>
               <span className={idx <= 2 ? 'text-primary font-medium' : 'text-gray-400'}>{step}</span>
@@ -163,11 +163,11 @@ function PaymentContent() {
           <div className="grid grid-cols-2 gap-y-3 text-sm">
             <div className="text-gray-400">订单编号</div>
             <div className="text-gray-700 font-mono">{order.orderNo}</div>
-            <div className="text-gray-400">电影</div>
+            <div className="text-gray-400">活动</div>
             <div className="text-gray-700">{order.movieName || '-'}</div>
-            <div className="text-gray-400">影院</div>
+            <div className="text-gray-400">场馆</div>
             <div className="text-gray-700">{order.cinemaName || '-'}</div>
-            <div className="text-gray-400">影厅</div>
+            <div className="text-gray-400">会场</div>
             <div className="text-gray-700">{order.hallName || '-'}</div>
             <div className="text-gray-400">场次</div>
             <div className="text-gray-700">{order.showTime || '-'}</div>
