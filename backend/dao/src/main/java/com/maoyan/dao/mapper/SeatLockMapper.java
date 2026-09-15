@@ -70,6 +70,9 @@ public interface SeatLockMapper extends BaseMapper<SeatLockPO> {
     @Delete("DELETE FROM seat_lock WHERE order_no = #{orderNo} AND status = 1")
     int releaseOrderLocks(@Param("orderNo") String orderNo);
 
+    @Delete("DELETE FROM seat_lock WHERE order_no = #{orderNo} AND status = 2")
+    int releasePurchasedOrderLocks(@Param("orderNo") String orderNo);
+
     /**
      * 清理过期锁定（定时任务/启动时调用）
      */

@@ -5,6 +5,7 @@ import com.maoyan.domain.model.po.OrderSeatPO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -20,7 +21,8 @@ public interface OrderSeatMapper extends BaseMapper<OrderSeatPO> {
     @Select("""
         SELECT os.* FROM order_seat os
         INNER JOIN ticket_order o ON os.order_id = o.id
-        WHERE os.schedule_id = #{scheduleId} AND o.status = 1 AND o.deleted = 0
+        WHERE os.schedule_id = #{scheduleId} AND os.active_sale_marker = 1
+          AND o.status = 1 AND o.deleted = 0
     """)
     List<OrderSeatPO> selectPurchasedSeats(@Param("scheduleId") Long scheduleId);
 
@@ -32,4 +34,7 @@ public interface OrderSeatMapper extends BaseMapper<OrderSeatPO> {
 
     @Select("SELECT * FROM order_seat WHERE order_no = #{orderNo}")
     List<OrderSeatPO> selectByOrderNo(@Param("orderNo") String orderNo);
+
+    @Update("UPDATE order_seat SET active_sale_marker = NULL WHERE order_no = #{orderNo} AND active_sale_marker = 1")
+    int releaseActiveSalesByOrderNo(@Param("orderNo") String orderNo);
 }

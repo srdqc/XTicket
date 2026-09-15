@@ -118,6 +118,10 @@ const api = {
   cancelOrder: (orderNo: string) =>
     authInstance.post(`/order/cancel/${orderNo}`).then((res) => res.data),
 
+  /** 整单积分退款 */
+  refundOrder: (orderNo: string) =>
+    authInstance.post(`/order/refund/${encodeURIComponent(orderNo)}`).then((res) => res.data),
+
   /** 查询用户订单列表 */
   getUserOrders: (params: { page?: number; size?: number }) =>
     authInstance.get('/order/list', { params }).then((res) => res.data),

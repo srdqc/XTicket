@@ -31,6 +31,10 @@ public interface OrderMapper extends BaseMapper<OrderPO> {
     @Select("SELECT * FROM ticket_order WHERE order_no = #{orderNo} AND deleted = 0 FOR UPDATE")
     OrderPO selectByOrderNoForUpdate(@Param("orderNo") String orderNo);
 
+    @Select("SELECT * FROM ticket_order WHERE order_no = #{orderNo} AND user_id = #{userId} AND deleted = 0 FOR UPDATE")
+    OrderPO selectByOrderNoAndUserIdForUpdate(@Param("orderNo") String orderNo,
+                                               @Param("userId") Long userId);
+
     @Update("UPDATE ticket_order SET status = 2, cancel_time = #{now}, update_time = CURRENT_TIMESTAMP WHERE order_no = #{orderNo} AND status = 0 AND deleted = 0")
     int closePendingOrder(@Param("orderNo") String orderNo, @Param("now") LocalDateTime now);
 
@@ -39,4 +43,9 @@ public interface OrderMapper extends BaseMapper<OrderPO> {
 
     @Update("UPDATE ticket_order SET status = 1, pay_time = #{now}, update_time = CURRENT_TIMESTAMP WHERE order_no = #{orderNo} AND status = 0 AND deleted = 0")
     int markOrderPaid(@Param("orderNo") String orderNo, @Param("now") LocalDateTime now);
+
+    @Update("UPDATE ticket_order SET status = 3, refund_time = #{now}, update_time = CURRENT_TIMESTAMP WHERE order_no = #{orderNo} AND user_id = #{userId} AND status = 1 AND deleted = 0")
+    int markOrderRefunded(@Param("orderNo") String orderNo,
+                          @Param("userId") Long userId,
+                          @Param("now") LocalDateTime now);
 }

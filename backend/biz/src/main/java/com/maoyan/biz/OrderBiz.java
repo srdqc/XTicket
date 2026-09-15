@@ -3,9 +3,11 @@ package com.maoyan.biz;
 import com.maoyan.domain.model.dto.CreateOrderDTO;
 import com.maoyan.domain.model.po.ActivitySessionPO;
 import com.maoyan.domain.model.vo.OrderVO;
+import com.maoyan.domain.model.vo.RefundResult;
 import com.maoyan.service.ActivityService;
 import com.maoyan.service.ActivitySessionService;
 import com.maoyan.service.OrderService;
+import com.maoyan.service.RefundService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -20,6 +22,7 @@ public class OrderBiz {
     private final OrderService orderService;
     private final ActivitySessionService activitySessionService;
     private final ActivityService activityService;
+    private final RefundService refundService;
 
     public OrderVO createOrder(Long userId, CreateOrderDTO dto) {
         OrderVO orderVO = orderService.createOrder(userId, dto);
@@ -42,6 +45,10 @@ public class OrderBiz {
 
     public void cancelOrder(Long userId, String orderNo) {
         orderService.cancelOrder(userId, orderNo);
+    }
+
+    public RefundResult refundOrder(Long userId, String orderNo) {
+        return refundService.refund(userId, orderNo);
     }
 
     public List<OrderVO> getUserOrders(Long userId, int page, int size) {

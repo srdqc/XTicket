@@ -5,6 +5,7 @@ import com.maoyan.common.annotation.RateLimit;
 import com.maoyan.common.enums.RateLimitAlgorithm;
 import com.maoyan.domain.model.dto.CreateOrderDTO;
 import com.maoyan.domain.model.vo.OrderVO;
+import com.maoyan.domain.model.vo.RefundResult;
 import com.maoyan.domain.model.vo.Result;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -47,6 +48,15 @@ public class OrderController {
         }
         orderBiz.cancelOrder(userId, orderNo);
         return Result.ok(null);
+    }
+
+    @PostMapping("/refund/{orderNo}")
+    public Result<RefundResult> refundOrder(@PathVariable String orderNo, HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        if (userId == null) {
+            return Result.fail(401, "请先登录");
+        }
+        return Result.ok(orderBiz.refundOrder(userId, orderNo));
     }
 
     /**

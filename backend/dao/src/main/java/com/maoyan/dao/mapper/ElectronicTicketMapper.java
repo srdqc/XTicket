@@ -52,6 +52,20 @@ public interface ElectronicTicketMapper extends BaseMapper<ElectronicTicketPO> {
     @Select("SELECT * FROM electronic_ticket WHERE order_no = #{orderNo} AND deleted = 0 ORDER BY order_seat_id")
     List<ElectronicTicketPO> selectByOrderNo(@Param("orderNo") String orderNo);
 
+    @Select("SELECT * FROM electronic_ticket WHERE order_no = #{orderNo} AND deleted = 0 ORDER BY id FOR UPDATE")
+    List<ElectronicTicketPO> selectByOrderNoForUpdate(@Param("orderNo") String orderNo);
+
+    @Update("""
+        UPDATE electronic_ticket
+        SET status = #{invalidatedStatus}, invalidated_at = #{invalidatedAt},
+            update_time = CURRENT_TIMESTAMP
+        WHERE order_no = #{orderNo} AND status = #{issuedStatus} AND deleted = 0
+        """)
+    int invalidateIssuedByOrderNo(@Param("orderNo") String orderNo,
+                                   @Param("invalidatedAt") LocalDateTime invalidatedAt,
+                                   @Param("issuedStatus") int issuedStatus,
+                                   @Param("invalidatedStatus") int invalidatedStatus);
+
     @Select("""
         <script>
         SELECT et.ticket_no AS ticket_no, et.order_no AS order_no, et.session_id AS session_id,

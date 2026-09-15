@@ -77,4 +77,7 @@ public class OrderPO extends BaseEntity {
 
     /** 取消时间 */
     private LocalDateTime cancelTime;
+
+    /** 退款时间 */
+    private LocalDateTime refundTime;
 }

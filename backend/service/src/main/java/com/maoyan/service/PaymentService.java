@@ -157,6 +157,7 @@ public class PaymentService {
                 seat.setRowNum(lock.getRowNum());
                 seat.setColNum(lock.getColNum());
                 seat.setSeatLabel(lock.getRowNum() + "排" + lock.getColNum() + "座");
+                seat.setActiveSaleMarker(1);
                 seat.setCreateTime(now);
                 orderSeatMapper.insert(seat);
             }

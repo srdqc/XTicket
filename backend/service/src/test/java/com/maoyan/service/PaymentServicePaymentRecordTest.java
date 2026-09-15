@@ -100,6 +100,10 @@ class PaymentServicePaymentRecordTest {
         assertThat(result.getRemainingPoints()).isEqualTo(390);
 
         verify(orderSeatMapper, times(2)).insert(any());
+        ArgumentCaptor<com.maoyan.domain.model.po.OrderSeatPO> seatCaptor =
+                ArgumentCaptor.forClass(com.maoyan.domain.model.po.OrderSeatPO.class);
+        verify(orderSeatMapper, times(2)).insert(seatCaptor.capture());
+        assertThat(seatCaptor.getAllValues()).allMatch(seat -> Integer.valueOf(1).equals(seat.getActiveSaleMarker()));
         InOrder writes = inOrder(userMapper, orderMapper, seatLockMapper, paymentRecordMapper, ticketService);
         writes.verify(userMapper).deductPoints(1001L, 110);
         writes.verify(orderMapper).markOrderPaid(eq("MO_PAY_001"), any(LocalDateTime.class));
