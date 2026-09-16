@@ -21,6 +21,7 @@ import com.maoyan.domain.model.po.UserPO;
 import com.maoyan.domain.model.vo.CheckInResult;
 import com.maoyan.domain.model.vo.RefundResult;
 import com.maoyan.service.infrastructure.StockService;
+import com.maoyan.service.event.OrderEventOutboxService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -65,6 +66,7 @@ class RefundServiceTest {
     @Mock private UserMapper userMapper;
     @Mock private ActivitySessionMapper activitySessionMapper;
     @Mock private StockService stockService;
+    @Mock private OrderEventOutboxService orderEventOutboxService;
 
     private RefundService refundService;
 
@@ -72,7 +74,7 @@ class RefundServiceTest {
     void setUp() {
         refundService = new RefundService(orderMapper, paymentRecordMapper, refundRecordMapper,
                 electronicTicketMapper, orderSeatMapper, seatLockMapper, userMapper,
-                activitySessionMapper, stockService);
+                activitySessionMapper, stockService, orderEventOutboxService);
     }
 
     @Test
@@ -151,7 +153,7 @@ class RefundServiceTest {
     @Test
     void incompleteTicketInvalidationFailsBeforePointsAndSeatRelease() {
         stubSuccessfulRefund();
-        when(electronicTicketMapper.invalidateIssuedByOrderNo(eq(ORDER_NO), any(), anyInt(), anyInt()))
+        lenient().when(electronicTicketMapper.invalidateIssuedByOrderNo(eq(ORDER_NO), any(), anyInt(), anyInt()))
                 .thenReturn(1);
 
         assertThatThrownBy(() -> refundService.refund(USER_ID, ORDER_NO))
@@ -269,16 +271,16 @@ class RefundServiceTest {
                         ticketLock.unlock();
                     }
                 });
-        when(orderSeatMapper.selectByOrderNo(ORDER_NO)).thenReturn(List.of(activeSeat()));
-        when(paymentRecordMapper.selectSuccessfulByOrderNo(ORDER_NO)).thenReturn(paymentFor("65.01"));
-        when(orderMapper.markOrderRefunded(eq(ORDER_NO), eq(USER_ID), any())).thenAnswer(invocation -> {
+        lenient().when(orderSeatMapper.selectByOrderNo(ORDER_NO)).thenReturn(List.of(activeSeat()));
+        lenient().when(paymentRecordMapper.selectSuccessfulByOrderNo(ORDER_NO)).thenReturn(paymentFor("65.01"));
+        lenient().when(orderMapper.markOrderRefunded(eq(ORDER_NO), eq(USER_ID), any())).thenAnswer(invocation -> {
             orderStatus.set(OrderStatusEnum.REFUNDED.getCode());
             return 1;
         });
-        when(userMapper.addPoints(USER_ID, 66)).thenReturn(1);
-        when(orderSeatMapper.releaseActiveSalesByOrderNo(ORDER_NO)).thenReturn(1);
-        when(seatLockMapper.releasePurchasedOrderLocks(ORDER_NO)).thenReturn(1);
-        when(activitySessionMapper.rollbackStock(40L, 1)).thenReturn(1);
+        lenient().when(userMapper.addPoints(USER_ID, 66)).thenReturn(1);
+        lenient().when(orderSeatMapper.releaseActiveSalesByOrderNo(ORDER_NO)).thenReturn(1);
+        lenient().when(seatLockMapper.releasePurchasedOrderLocks(ORDER_NO)).thenReturn(1);
+        lenient().when(activitySessionMapper.rollbackStock(40L, 1)).thenReturn(1);
 
         CyclicBarrier barrier = new CyclicBarrier(2);
         CheckInService checkInService = new CheckInService(userMapper, electronicTicketMapper);

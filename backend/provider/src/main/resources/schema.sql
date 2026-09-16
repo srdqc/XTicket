@@ -202,6 +202,31 @@ CREATE TABLE IF NOT EXISTS refund_record (
     deleted         INT           DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS outbox_event (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    event_id        VARCHAR(36)   NOT NULL,
+    aggregate_type  VARCHAR(40)   NOT NULL,
+    aggregate_id    VARCHAR(64)   NOT NULL,
+    event_type      VARCHAR(40)   NOT NULL,
+    topic           VARCHAR(120)  NOT NULL,
+    tag             VARCHAR(80)   NOT NULL,
+    payload         TEXT          NOT NULL,
+    status          VARCHAR(20)   NOT NULL,
+    retry_count     INT           NOT NULL DEFAULT 0,
+    next_retry_time TIMESTAMP     NOT NULL,
+    published_at    TIMESTAMP     NULL,
+    last_error      VARCHAR(1000) NULL,
+    create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+    update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS consumed_event (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    consumer_group  VARCHAR(120) NOT NULL,
+    event_id        VARCHAR(36)  NOT NULL,
+    consumed_at     TIMESTAMP    NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS activity_follow (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id         BIGINT        NOT NULL      COMMENT '用户ID',
@@ -288,6 +313,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_record_payment_no ON payment_record
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_record_order_no ON payment_record(order_no);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_refund_record_refund_no ON refund_record(refund_no);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_refund_record_order_no ON refund_record(order_no);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_outbox_event_id ON outbox_event(event_id);
+CREATE INDEX IF NOT EXISTS idx_outbox_publish ON outbox_event(status, next_retry_time, id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_consumed_event_group_event ON consumed_event(consumer_group, event_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_follow_unique ON activity_follow(user_id, activity_id);
 CREATE INDEX IF NOT EXISTS idx_hall_venue ON venue_hall(venue_id, deleted);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_hall_unique ON venue_hall(venue_id, hall_name, deleted);

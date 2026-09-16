@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * 订单事件 - 通过 MQ 异步处理后续逻辑（缓存失效、通知等）
@@ -17,6 +18,8 @@ public class OrderEvent implements Serializable {
 
     public enum Type { CREATED, PAID, CANCELLED, REFUNDED }
 
+    private String eventId;
+    private Integer version;
     private Type type;
     private String orderNo;
     private Long userId;
@@ -25,5 +28,13 @@ public class OrderEvent implements Serializable {
     private String movieName;
     private Integer seatCount;
     private BigDecimal totalPrice;
-    private long timestamp;
+    private long occurredAt;
+
+    public static OrderEvent create(Type type, String orderNo, Long userId, Long scheduleId,
+                                    Integer seatCount, BigDecimal totalPrice) {
+        return new OrderEvent(
+                UUID.randomUUID().toString(), 1, type, orderNo, userId, scheduleId,
+                null, null, seatCount, totalPrice, System.currentTimeMillis()
+        );
+    }
 }

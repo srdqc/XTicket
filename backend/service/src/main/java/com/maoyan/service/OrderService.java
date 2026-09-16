@@ -2,7 +2,6 @@ package com.maoyan.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.maoyan.common.constants.CacheConstants;
-import com.maoyan.common.constants.MQConstants;
 import com.maoyan.dao.mapper.OrderMapper;
 import com.maoyan.dao.mapper.OrderSeatMapper;
 import com.maoyan.dao.mapper.ActivitySessionMapper;
@@ -20,10 +19,9 @@ import com.maoyan.domain.model.po.SeatLockPO;
 import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
 import com.maoyan.service.infrastructure.StockService;
+import com.maoyan.service.event.OrderEventOutboxService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.spring.core.RocketMQTemplate;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -54,9 +52,7 @@ public class OrderService {
     private final DistributedLockService lockService;
     private final PlatformTransactionManager transactionManager;
     private final OrderClosureService orderClosureService;
-
-    @Autowired(required = false)
-    private RocketMQTemplate rocketMQTemplate;
+    private final OrderEventOutboxService orderEventOutboxService;
 
     private static final DateTimeFormatter ORDER_NO_FMT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private static final DateTimeFormatter VO_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -145,7 +141,7 @@ public class OrderService {
             }
 
             refreshScheduleDetailCache(scheduleId);
-            sendOrderEvent(OrderEvent.Type.CREATED, order);
+            orderEventOutboxService.append(OrderEvent.Type.CREATED, order);
             log.info("[Order] Created: orderNo={}, userId={}, scheduleId={}, seats={}, total={}",
                     orderNo, userId, scheduleId, seatCount, order.getTotalPrice());
             return toVO(order);
@@ -386,28 +382,6 @@ public class OrderService {
         return orderMapper.selectByUserIdWithPage(userId, offset, size).stream()
                 .map(this::toVO)
                 .toList();
-    }
-
-    private void sendOrderEvent(OrderEvent.Type type, OrderPO order) {
-        if (rocketMQTemplate == null) {
-            return;
-        }
-        OrderEvent event = new OrderEvent(
-                type,
-                order.getOrderNo(), order.getUserId(), order.getScheduleId(), null,
-                null, order.getSeatCount(), order.getTotalPrice(), System.currentTimeMillis()
-        );
-        try {
-            String tag = switch (type) {
-                case CREATED -> MQConstants.TAG_ORDER_CREATED;
-                case PAID -> MQConstants.TAG_ORDER_PAID;
-                case CANCELLED -> MQConstants.TAG_ORDER_CANCELLED;
-                case REFUNDED -> MQConstants.TAG_ORDER_REFUNDED;
-            };
-            rocketMQTemplate.syncSend(MQConstants.ORDER_TOPIC + ":" + tag, event, 1000);
-        } catch (Exception e) {
-            log.error("[Order] MQ notify failed, type={}, orderNo={}", type, order.getOrderNo(), e);
-        }
     }
 
     private void refreshScheduleDetailCache(Long scheduleId) {

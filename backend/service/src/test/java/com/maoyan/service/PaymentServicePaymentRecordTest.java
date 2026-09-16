@@ -14,6 +14,7 @@ import com.maoyan.domain.model.po.SeatLockPO;
 import com.maoyan.domain.model.po.UserPO;
 import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
+import com.maoyan.service.event.OrderEventOutboxService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -61,13 +62,16 @@ class PaymentServicePaymentRecordTest {
     private OrderClosureService orderClosureService;
     @Mock
     private TicketService ticketService;
+    @Mock
+    private OrderEventOutboxService orderEventOutboxService;
 
     private PaymentService paymentService;
 
     @BeforeEach
     void setUp() {
         paymentService = new PaymentService(orderMapper, seatLockMapper, orderSeatMapper,
-                paymentRecordMapper, userMapper, lockService, orderClosureService, ticketService);
+                paymentRecordMapper, userMapper, lockService, orderClosureService, ticketService,
+                orderEventOutboxService);
         when(lockService.<OrderVO>executeWithBoundedLock(anyString(), anyLong(), anyLong(), any()))
                 .thenAnswer(invocation -> {
                     @SuppressWarnings("unchecked")

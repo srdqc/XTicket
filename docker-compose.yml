@@ -93,7 +93,7 @@ services:
       - "10909:10909"
     environment:
       NAMESRV_ADDR: "rocketmq-namesrv:9876"
-      JAVA_OPT_EXT: "-Xms128m -Xmx256m -Xmn64m -XX:MaxDirectMemorySize=128m"
+      JAVA_OPT_EXT: "-Xms128m -Xmx256m -Xmn64m -XX:MaxDirectMemorySize=128m -XX:-UseContainerSupport"
     volumes:
       - rocketmq-broker-data:/home/rocketmq/data
       - rocketmq-broker-logs:/home/rocketmq/logs

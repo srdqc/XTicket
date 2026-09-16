@@ -1,7 +1,6 @@
 package com.maoyan.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.maoyan.common.constants.MQConstants;
 import com.maoyan.dao.mapper.OrderMapper;
 import com.maoyan.dao.mapper.OrderSeatMapper;
 import com.maoyan.dao.mapper.PaymentRecordMapper;
@@ -18,10 +17,9 @@ import com.maoyan.domain.model.po.SeatLockPO;
 import com.maoyan.domain.model.po.UserPO;
 import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
+import com.maoyan.service.event.OrderEventOutboxService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.spring.core.RocketMQTemplate;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,9 +44,7 @@ public class PaymentService {
     private final DistributedLockService lockService;
     private final OrderClosureService orderClosureService;
     private final TicketService ticketService;
-
-    @Autowired(required = false)
-    private RocketMQTemplate rocketMQTemplate;
+    private final OrderEventOutboxService orderEventOutboxService;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter PAYMENT_NO_FMT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
@@ -117,7 +113,7 @@ public class PaymentService {
 
         order.setStatus(OrderStatusEnum.PAID.getCode());
         order.setPayTime(now);
-        sendPaidEvent(order);
+        orderEventOutboxService.append(OrderEvent.Type.PAID, order);
 
         log.info("[Payment] Order paid: orderNo={}, total={}", orderNo, order.getTotalPrice());
         OrderVO vo = toVO(order);
@@ -206,22 +202,6 @@ public class PaymentService {
         wrapper.eq(OrderPO::getOrderNo, orderNo)
                 .eq(OrderPO::getUserId, userId);
         return orderMapper.selectOne(wrapper);
-    }
-
-    private void sendPaidEvent(OrderPO order) {
-        if (rocketMQTemplate == null) {
-            return;
-        }
-        try {
-            OrderEvent event = new OrderEvent(
-                    OrderEvent.Type.PAID, order.getOrderNo(), order.getUserId(),
-                    order.getScheduleId(), null, null,
-                    order.getSeatCount(), order.getTotalPrice(), System.currentTimeMillis()
-            );
-            rocketMQTemplate.syncSend(MQConstants.ORDER_TOPIC + ":" + MQConstants.TAG_ORDER_PAID, event, 1000);
-        } catch (Exception e) {
-            log.error("[Payment] MQ notify failed", e);
-        }
     }
 
     private OrderVO toVO(OrderPO po) {
