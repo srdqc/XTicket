@@ -7,6 +7,7 @@ import com.maoyan.dao.mapper.SeatLockMapper;
 import com.maoyan.domain.model.po.OrderPO;
 import com.maoyan.service.infrastructure.DistributedLockService;
 import com.maoyan.service.infrastructure.StockService;
+import com.maoyan.service.event.OrderEventOutboxService;
 import org.apache.ibatis.annotations.Select;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,6 +45,8 @@ class OrderExpiredScanTest {
     private PlatformTransactionManager transactionManager;
     @Mock
     private OrderClosureService orderClosureService;
+    @Mock
+    private OrderEventOutboxService orderEventOutboxService;
 
     @Test
     void expiredOrderScanSqlKeepsPendingExpiredDeletedAndLimitPredicates() throws Exception {
@@ -66,7 +69,7 @@ class OrderExpiredScanTest {
     @Test
     void schedulerScansAtMostOneHundredExpiredPendingOrders() {
         OrderService orderService = new OrderService(orderMapper, activitySessionMapper, seatLockMapper, orderSeatMapper,
-                stockService, lockService, transactionManager, orderClosureService);
+                stockService, lockService, transactionManager, orderClosureService, orderEventOutboxService);
         OrderPO order = new OrderPO();
         order.setOrderNo("MO_EXPIRED_001");
         when(orderMapper.selectExpiredPendingOrders(any(LocalDateTime.class), eq(100)))
@@ -81,7 +84,7 @@ class OrderExpiredScanTest {
     @Test
     void schedulerDoesNothingWhenNoExpiredPendingOrdersFound() {
         OrderService orderService = new OrderService(orderMapper, activitySessionMapper, seatLockMapper, orderSeatMapper,
-                stockService, lockService, transactionManager, orderClosureService);
+                stockService, lockService, transactionManager, orderClosureService, orderEventOutboxService);
         when(orderMapper.selectExpiredPendingOrders(any(LocalDateTime.class), eq(100))).thenReturn(List.of());
 
         orderService.cancelExpiredOrders();

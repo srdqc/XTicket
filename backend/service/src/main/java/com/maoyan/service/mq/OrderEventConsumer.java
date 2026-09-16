@@ -2,14 +2,21 @@ package com.maoyan.service.mq;
 
 import com.maoyan.common.constants.CacheConstants;
 import com.maoyan.common.constants.MQConstants;
+import com.maoyan.dao.mapper.ConsumedEventMapper;
 import com.maoyan.domain.model.event.OrderEvent;
 import com.maoyan.service.cache.MultiLevelCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
+import org.apache.rocketmq.spring.core.RocketMQPushConsumerLifecycleListener;
+import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
+import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 
 /**
  * 订单事件消费者 — RocketMQ 版
@@ -26,14 +33,28 @@ import org.springframework.stereotype.Component;
         consumerGroup = MQConstants.ORDER_CONSUMER_GROUP,
         selectorExpression = "*"
 )
-public class OrderEventConsumer implements RocketMQListener<OrderEvent> {
+public class OrderEventConsumer implements RocketMQListener<OrderEvent>, RocketMQPushConsumerLifecycleListener {
 
     private final MultiLevelCacheService cacheService;
+    private final ConsumedEventMapper consumedEventMapper;
 
     @Override
+    public void prepareStart(DefaultMQPushConsumer consumer) {
+        consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void onMessage(OrderEvent event) {
         log.info("[OrderConsumer] Received: type={}, orderNo={}", event.getType(), event.getOrderNo());
         try {
+            if (event.getEventId() != null && !event.getEventId().isBlank()
+                    && consumedEventMapper.insertIfAbsent(MQConstants.ORDER_CONSUMER_GROUP,
+                    event.getEventId(), LocalDateTime.now()) == 0) {
+                log.info("[OrderConsumer] Duplicate skipped: eventId={}, orderNo={}",
+                        event.getEventId(), event.getOrderNo());
+                return;
+            }
             switch (event.getType()) {
                 case CREATED -> handleOrderCreated(event);
                 case PAID -> handleOrderPaid(event);

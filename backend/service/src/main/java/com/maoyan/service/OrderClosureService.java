@@ -1,6 +1,5 @@
 package com.maoyan.service;
 
-import com.maoyan.common.constants.MQConstants;
 import com.maoyan.dao.mapper.OrderMapper;
 import com.maoyan.dao.mapper.ActivitySessionMapper;
 import com.maoyan.dao.mapper.SeatLockMapper;
@@ -9,11 +8,10 @@ import com.maoyan.domain.model.event.OrderEvent;
 import com.maoyan.domain.model.po.OrderPO;
 import com.maoyan.domain.model.po.ActivitySessionPO;
 import com.maoyan.service.infrastructure.StockService;
+import com.maoyan.service.event.OrderEventOutboxService;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.spring.core.RocketMQTemplate;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -31,9 +29,7 @@ public class OrderClosureService {
     private final SeatLockMapper seatLockMapper;
     private final StockService stockService;
     private final PlatformTransactionManager transactionManager;
-
-    @Autowired(required = false)
-    private RocketMQTemplate rocketMQTemplate;
+    private final OrderEventOutboxService orderEventOutboxService;
 
     public CloseResult closeExpiredOrder(String orderNo, String source) {
         LocalDateTime now = LocalDateTime.now();
@@ -75,6 +71,7 @@ public class OrderClosureService {
             int releasedLocks = seatLockMapper.releaseOrderLocks(orderNo);
             order.setStatus(OrderStatusEnum.CANCELLED.getCode());
             order.setCancelTime(now);
+            orderEventOutboxService.append(OrderEvent.Type.CANCELLED, order);
             log.info("[OrderClosure] DB closed: orderNo={}, source={}, casAffectedRows={}, seatCount={}, dbStockRows={}, releasedLocks={}",
                     orderNo, source, closed, order.getSeatCount(), dbStockRows, releasedLocks);
             return CloseResult.closed(order, dbStockRows, releasedLocks);
@@ -88,7 +85,6 @@ public class OrderClosureService {
         OrderPO order = result.getOrder();
         stockService.rollback(order.getScheduleId(), order.getSeatCount());
         refreshScheduleDetailCache(order.getScheduleId());
-        sendCancelledEvent(order);
         log.info("[OrderClosure] Closed committed: orderNo={}, source={}, seatCount={}, dbStockRows={}, releasedLocks={}",
                 order.getOrderNo(), source, order.getSeatCount(), result.getDbStockRows(), result.getReleasedLocks());
     }
@@ -101,22 +97,6 @@ public class OrderClosureService {
             }
         } catch (Exception e) {
             log.warn("[OrderClosure] Failed to refresh schedule cache: scheduleId={}", scheduleId, e);
-        }
-    }
-
-    private void sendCancelledEvent(OrderPO order) {
-        if (rocketMQTemplate == null) {
-            return;
-        }
-        OrderEvent event = new OrderEvent(
-                OrderEvent.Type.CANCELLED,
-                order.getOrderNo(), order.getUserId(), order.getScheduleId(), null,
-                null, order.getSeatCount(), order.getTotalPrice(), System.currentTimeMillis()
-        );
-        try {
-            rocketMQTemplate.syncSend(MQConstants.ORDER_TOPIC + ":" + MQConstants.TAG_ORDER_CANCELLED, event, 1000);
-        } catch (Exception e) {
-            log.error("[OrderClosure] MQ notify failed, orderNo={}", order.getOrderNo(), e);
         }
     }
 

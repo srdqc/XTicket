@@ -19,6 +19,8 @@ import com.maoyan.domain.model.po.OrderSeatPO;
 import com.maoyan.domain.model.po.PaymentRecordPO;
 import com.maoyan.domain.model.po.RefundRecordPO;
 import com.maoyan.domain.model.vo.RefundResult;
+import com.maoyan.domain.model.event.OrderEvent;
+import com.maoyan.service.event.OrderEventOutboxService;
 import com.maoyan.service.infrastructure.StockService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +53,7 @@ public class RefundService {
     private final UserMapper userMapper;
     private final ActivitySessionMapper activitySessionMapper;
     private final StockService stockService;
+    private final OrderEventOutboxService orderEventOutboxService;
 
     @Transactional(rollbackFor = Exception.class, timeout = 8, isolation = Isolation.READ_COMMITTED)
     public RefundResult refund(Long userId, String orderNo) {
@@ -91,6 +94,7 @@ public class RefundService {
 
         order.setStatus(OrderStatusEnum.REFUNDED.getCode());
         order.setRefundTime(now);
+        orderEventOutboxService.append(OrderEvent.Type.REFUNDED, order);
         registerRedisRestoreAfterCommit(order);
         log.info("[Refund] Order refunded: orderNo={}, amount={}, points={}, tickets={}",
                 normalizedOrderNo, payment.getAmount(), refundedPoints, tickets.size());

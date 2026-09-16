@@ -15,6 +15,7 @@ import com.maoyan.domain.model.po.SeatLockPO;
 import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
 import com.maoyan.service.infrastructure.StockService;
+import com.maoyan.service.event.OrderEventOutboxService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -59,13 +60,15 @@ class OrderServiceSnapshotTest {
     private PlatformTransactionManager transactionManager;
     @Mock
     private OrderClosureService orderClosureService;
+    @Mock
+    private OrderEventOutboxService orderEventOutboxService;
 
     private OrderService orderService;
 
     @BeforeEach
     void setUp() {
         orderService = new OrderService(orderMapper, activitySessionMapper, seatLockMapper, orderSeatMapper,
-                stockService, lockService, transactionManager, orderClosureService);
+                stockService, lockService, transactionManager, orderClosureService, orderEventOutboxService);
         when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         when(lockService.<OrderVO>executeWithBoundedLock(anyString(), anyLong(), anyLong(), any()))
                 .thenAnswer(invocation -> {
