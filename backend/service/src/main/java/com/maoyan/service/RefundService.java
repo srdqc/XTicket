@@ -22,6 +22,8 @@ import com.maoyan.domain.model.vo.RefundResult;
 import com.maoyan.domain.model.event.OrderEvent;
 import com.maoyan.service.event.OrderEventOutboxService;
 import com.maoyan.service.infrastructure.StockService;
+import com.maoyan.service.observability.BusinessMetrics;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -54,51 +56,63 @@ public class RefundService {
     private final ActivitySessionMapper activitySessionMapper;
     private final StockService stockService;
     private final OrderEventOutboxService orderEventOutboxService;
+    private final BusinessMetrics businessMetrics;
 
     @Transactional(rollbackFor = Exception.class, timeout = 8, isolation = Isolation.READ_COMMITTED)
     public RefundResult refund(Long userId, String orderNo) {
-        String normalizedOrderNo = normalizeOrderNo(orderNo);
-        OrderPO order = orderMapper.selectByOrderNoAndUserIdForUpdate(normalizedOrderNo, userId);
-        if (order == null) {
-            throw new BizException(ResponseCodeEnum.NOT_FOUND.getCode(), "订单不存在");
+        Timer.Sample sample = businessMetrics.startTimer();
+        boolean success = false;
+        try {
+            String normalizedOrderNo = normalizeOrderNo(orderNo);
+            OrderPO order = orderMapper.selectByOrderNoAndUserIdForUpdate(normalizedOrderNo, userId);
+            if (order == null) {
+                throw new BizException(ResponseCodeEnum.NOT_FOUND.getCode(), "订单不存在");
+            }
+            if (order.getStatus() == OrderStatusEnum.REFUNDED.getCode()) {
+                RefundResult result = existingRefundResult(order);
+                success = true;
+                return result;
+            }
+            requirePaidOrder(order);
+
+            List<ElectronicTicketPO> tickets = electronicTicketMapper.selectByOrderNoForUpdate(normalizedOrderNo);
+            validateRefundableTickets(order, tickets);
+            List<OrderSeatPO> orderSeats = orderSeatMapper.selectByOrderNo(normalizedOrderNo);
+            validateActiveOrderSeats(order, orderSeats);
+
+            PaymentRecordPO payment = paymentRecordMapper.selectSuccessfulByOrderNo(normalizedOrderNo);
+            validatePayment(order, payment);
+
+            LocalDateTime now = LocalDateTime.now();
+            int refundedPoints = payment.getAmount().setScale(0, RoundingMode.UP).intValue();
+            requireAffected(electronicTicketMapper.invalidateIssuedByOrderNo(
+                    normalizedOrderNo, now, TicketStatusEnum.ISSUED.getCode(),
+                    TicketStatusEnum.INVALIDATED.getCode()), tickets.size(), "电子票作废不完整");
+            requireAffected(orderMapper.markOrderRefunded(normalizedOrderNo, userId, now), 1, "订单退款状态更新失败");
+            requireAffected(userMapper.addPoints(userId, refundedPoints), 1, "退款积分返还失败");
+
+            RefundRecordPO refundRecord = buildRefundRecord(order, payment, refundedPoints, now);
+            refundRecordMapper.insert(refundRecord);
+            requireAffected(orderSeatMapper.releaseActiveSalesByOrderNo(normalizedOrderNo),
+                    order.getSeatCount(), "有效售座释放不完整");
+            requireAffected(seatLockMapper.releasePurchasedOrderLocks(normalizedOrderNo),
+                    order.getSeatCount(), "已购买座位锁释放不完整");
+            requireAffected(activitySessionMapper.rollbackStock(order.getScheduleId(), order.getSeatCount()),
+                    1, "数据库库存恢复失败");
+
+            order.setStatus(OrderStatusEnum.REFUNDED.getCode());
+            order.setRefundTime(now);
+            orderEventOutboxService.append(OrderEvent.Type.REFUNDED, order);
+            registerRedisRestoreAfterCommit(order);
+            log.info("[Refund] Order refunded: orderNo={}, amount={}, points={}, tickets={}",
+                    normalizedOrderNo, payment.getAmount(), refundedPoints, tickets.size());
+            RefundResult result = toResult(order, refundRecord, tickets.size());
+            businessMetrics.refundSuccess();
+            success = true;
+            return result;
+        } finally {
+            businessMetrics.stopRefund(sample, success);
         }
-        if (order.getStatus() == OrderStatusEnum.REFUNDED.getCode()) {
-            return existingRefundResult(order);
-        }
-        requirePaidOrder(order);
-
-        List<ElectronicTicketPO> tickets = electronicTicketMapper.selectByOrderNoForUpdate(normalizedOrderNo);
-        validateRefundableTickets(order, tickets);
-        List<OrderSeatPO> orderSeats = orderSeatMapper.selectByOrderNo(normalizedOrderNo);
-        validateActiveOrderSeats(order, orderSeats);
-
-        PaymentRecordPO payment = paymentRecordMapper.selectSuccessfulByOrderNo(normalizedOrderNo);
-        validatePayment(order, payment);
-
-        LocalDateTime now = LocalDateTime.now();
-        int refundedPoints = payment.getAmount().setScale(0, RoundingMode.UP).intValue();
-        requireAffected(electronicTicketMapper.invalidateIssuedByOrderNo(
-                normalizedOrderNo, now, TicketStatusEnum.ISSUED.getCode(),
-                TicketStatusEnum.INVALIDATED.getCode()), tickets.size(), "电子票作废不完整");
-        requireAffected(orderMapper.markOrderRefunded(normalizedOrderNo, userId, now), 1, "订单退款状态更新失败");
-        requireAffected(userMapper.addPoints(userId, refundedPoints), 1, "退款积分返还失败");
-
-        RefundRecordPO refundRecord = buildRefundRecord(order, payment, refundedPoints, now);
-        refundRecordMapper.insert(refundRecord);
-        requireAffected(orderSeatMapper.releaseActiveSalesByOrderNo(normalizedOrderNo),
-                order.getSeatCount(), "有效售座释放不完整");
-        requireAffected(seatLockMapper.releasePurchasedOrderLocks(normalizedOrderNo),
-                order.getSeatCount(), "已购买座位锁释放不完整");
-        requireAffected(activitySessionMapper.rollbackStock(order.getScheduleId(), order.getSeatCount()),
-                1, "数据库库存恢复失败");
-
-        order.setStatus(OrderStatusEnum.REFUNDED.getCode());
-        order.setRefundTime(now);
-        orderEventOutboxService.append(OrderEvent.Type.REFUNDED, order);
-        registerRedisRestoreAfterCommit(order);
-        log.info("[Refund] Order refunded: orderNo={}, amount={}, points={}, tickets={}",
-                normalizedOrderNo, payment.getAmount(), refundedPoints, tickets.size());
-        return toResult(order, refundRecord, tickets.size());
     }
 
     private void requirePaidOrder(OrderPO order) {

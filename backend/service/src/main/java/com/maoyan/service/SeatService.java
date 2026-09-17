@@ -12,6 +12,8 @@ import com.maoyan.domain.model.dto.LockSeatsDTO;
 import com.maoyan.domain.model.po.*;
 import com.maoyan.domain.model.vo.SeatLayoutVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
+import com.maoyan.service.observability.BusinessMetrics;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -49,6 +51,7 @@ public class SeatService {
     private final OrderSeatMapper orderSeatMapper;
     private final ActivitySessionMapper activitySessionMapper;
     private final DistributedLockService lockService;
+    private final BusinessMetrics businessMetrics;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -77,11 +80,14 @@ public class SeatService {
      */
     @Transactional(rollbackFor = Exception.class, timeout = 8)
     public Map<String, Object> lockSeats(Long userId, LockSeatsDTO dto) {
-        Long scheduleId = dto.getScheduleId();
-        String lockKey = "seat:" + scheduleId;
+        Timer.Sample sample = businessMetrics.startTimer();
+        boolean success = false;
+        try {
+            Long scheduleId = dto.getScheduleId();
+            String lockKey = "seat:" + scheduleId;
 
         // 分布式锁保护（等待3秒，持有10秒）
-        Map<String, Object> result = lockService.executeWithBoundedLock(lockKey, 3, 12, () -> {
+            Map<String, Object> result = lockService.executeWithBoundedLock(lockKey, 3, 12, () -> {
             // 1. 验证场次
             ActivitySessionPO schedule = activitySessionMapper.selectById(scheduleId);
             if (schedule == null || schedule.getStatus() != 1) {
@@ -145,10 +151,14 @@ public class SeatService {
             return res;
         });
 
-        if (result == null) {
-            throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "系统繁忙，请重试");
+            if (result == null) {
+                throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "系统繁忙，请重试");
+            }
+            success = true;
+            return result;
+        } finally {
+            businessMetrics.stopSeatLock(sample, success);
         }
-        return result;
     }
 
     private void insertSeatLockOrConflict(SeatLockPO lock, int requestSeatCount) {

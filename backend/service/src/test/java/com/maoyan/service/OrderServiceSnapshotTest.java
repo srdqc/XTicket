@@ -16,6 +16,7 @@ import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
 import com.maoyan.service.infrastructure.StockService;
 import com.maoyan.service.event.OrderEventOutboxService;
+import com.maoyan.service.observability.BusinessMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,13 +63,16 @@ class OrderServiceSnapshotTest {
     private OrderClosureService orderClosureService;
     @Mock
     private OrderEventOutboxService orderEventOutboxService;
+    @Mock
+    private BusinessMetrics businessMetrics;
 
     private OrderService orderService;
 
     @BeforeEach
     void setUp() {
         orderService = new OrderService(orderMapper, activitySessionMapper, seatLockMapper, orderSeatMapper,
-                stockService, lockService, transactionManager, orderClosureService, orderEventOutboxService);
+                stockService, lockService, transactionManager, orderClosureService, orderEventOutboxService,
+                businessMetrics);
         when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         when(lockService.<OrderVO>executeWithBoundedLock(anyString(), anyLong(), anyLong(), any()))
                 .thenAnswer(invocation -> {
@@ -109,6 +113,7 @@ class OrderServiceSnapshotTest {
         assertThat(result.getMovieName()).isEqualTo("Snapshot Movie");
         assertThat(result.getSeatsInfo()).isEqualTo("1排4座,2排3座");
         verify(activitySessionMapper).deductStock(40L, 2, 7);
+        verify(businessMetrics).orderCreated();
     }
 
     @Test
@@ -161,6 +166,7 @@ class OrderServiceSnapshotTest {
         verify(activitySessionMapper, never()).selectOrderSnapshotSource(anyLong());
         verify(stockService, never()).preDeduct(anyLong(), anyInt());
         verify(orderMapper, never()).insert(any(OrderPO.class));
+        verify(businessMetrics, never()).orderCreated();
     }
 
     private static CreateOrderDTO orderRequest(String lockToken, List<LockSeatsDTO.SeatPos> seats, String seatsInfo) {

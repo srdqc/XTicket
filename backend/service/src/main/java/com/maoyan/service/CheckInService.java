@@ -9,6 +9,7 @@ import com.maoyan.domain.exception.BizException;
 import com.maoyan.domain.model.po.ElectronicTicketPO;
 import com.maoyan.domain.model.po.UserPO;
 import com.maoyan.domain.model.vo.CheckInResult;
+import com.maoyan.service.observability.BusinessMetrics;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -22,6 +23,7 @@ public class CheckInService {
 
     private final UserMapper userMapper;
     private final ElectronicTicketMapper electronicTicketMapper;
+    private final BusinessMetrics businessMetrics;
 
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public CheckInResult checkIn(Long operatorUserId, String ticketNo, Long sessionId) {
@@ -34,7 +36,9 @@ public class CheckInService {
         verifySession(ticket, sessionId);
 
         if (ticket.getStatus() == TicketStatusEnum.USED.getCode()) {
-            return buildResult(ticket.getTicketNo(), false);
+            CheckInResult result = buildResult(ticket.getTicketNo(), false);
+            businessMetrics.checkInDuplicate();
+            return result;
         }
         if (ticket.getStatus() == TicketStatusEnum.INVALIDATED.getCode()) {
             throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "电子票已失效，不能核销");
@@ -47,13 +51,17 @@ public class CheckInService {
                 ticket.getTicketNo(), sessionId, operatorUserId, LocalDateTime.now(),
                 TicketStatusEnum.ISSUED.getCode(), TicketStatusEnum.USED.getCode());
         if (affected == 1) {
-            return buildResult(ticket.getTicketNo(), true);
+            CheckInResult result = buildResult(ticket.getTicketNo(), true);
+            businessMetrics.checkInSuccess();
+            return result;
         }
 
         ElectronicTicketPO current = requireTicket(ticket.getTicketNo());
         verifySession(current, sessionId);
         if (current.getStatus() == TicketStatusEnum.USED.getCode()) {
-            return buildResult(current.getTicketNo(), false);
+            CheckInResult result = buildResult(current.getTicketNo(), false);
+            businessMetrics.checkInDuplicate();
+            return result;
         }
         if (current.getStatus() == TicketStatusEnum.INVALIDATED.getCode()) {
             throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "电子票已失效，不能核销");

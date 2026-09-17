@@ -1,6 +1,15 @@
 server:
   port: 8080
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
+  endpoint:
+    health:
+      show-details: never
+
 spring:
   application:
     name: maoyan-backend
@@ -72,7 +81,7 @@ logging:
     com.maoyan: DEBUG
     com.maoyan.dao: DEBUG
   pattern:
-    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level [traceId=%X{traceId:-}] %logger{36} - %msg%n"
 
 ---
 # ========== Docker Profile（MySQL + Redis + RocketMQ 全栈） ==========

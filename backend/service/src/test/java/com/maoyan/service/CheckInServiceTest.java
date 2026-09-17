@@ -8,6 +8,7 @@ import com.maoyan.domain.exception.BizException;
 import com.maoyan.domain.model.po.ElectronicTicketPO;
 import com.maoyan.domain.model.po.UserPO;
 import com.maoyan.domain.model.vo.CheckInResult;
+import com.maoyan.service.observability.BusinessMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,6 +47,8 @@ class CheckInServiceTest {
     private UserMapper userMapper;
     @Mock
     private ElectronicTicketMapper electronicTicketMapper;
+    @Mock
+    private BusinessMetrics businessMetrics;
 
     private final AtomicReference<Integer> status = new AtomicReference<>();
     private final AtomicReference<LocalDateTime> usedAt = new AtomicReference<>();
@@ -55,7 +58,7 @@ class CheckInServiceTest {
 
     @BeforeEach
     void setUp() {
-        checkInService = new CheckInService(userMapper, electronicTicketMapper);
+        checkInService = new CheckInService(userMapper, electronicTicketMapper, businessMetrics);
         status.set(TicketStatusEnum.ISSUED.getCode());
         usedAt.set(null);
         checkedBy.set(0L);
@@ -74,6 +77,7 @@ class CheckInServiceTest {
         assertThat(result.getUsedAt()).isNotBlank();
         assertThat(checkedBy.get()).isEqualTo(STAFF_ID);
         assertThat(successfulTransitions).hasValue(1);
+        verify(businessMetrics).checkInSuccess();
     }
 
     @Test
@@ -88,6 +92,8 @@ class CheckInServiceTest {
         assertThat(repeated.getUsedAt()).isEqualTo(first.getUsedAt());
         assertThat(checkedBy.get()).isEqualTo(STAFF_ID);
         assertThat(successfulTransitions).hasValue(1);
+        verify(businessMetrics).checkInSuccess();
+        verify(businessMetrics).checkInDuplicate();
     }
 
     @Test

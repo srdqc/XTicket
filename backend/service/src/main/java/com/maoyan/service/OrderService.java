@@ -2,6 +2,7 @@ package com.maoyan.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.maoyan.common.constants.CacheConstants;
+import com.maoyan.common.observability.TraceContext;
 import com.maoyan.dao.mapper.OrderMapper;
 import com.maoyan.dao.mapper.OrderSeatMapper;
 import com.maoyan.dao.mapper.ActivitySessionMapper;
@@ -20,6 +21,8 @@ import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
 import com.maoyan.service.infrastructure.StockService;
 import com.maoyan.service.event.OrderEventOutboxService;
+import com.maoyan.service.observability.BusinessMetrics;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -53,22 +56,30 @@ public class OrderService {
     private final PlatformTransactionManager transactionManager;
     private final OrderClosureService orderClosureService;
     private final OrderEventOutboxService orderEventOutboxService;
+    private final BusinessMetrics businessMetrics;
 
     private static final DateTimeFormatter ORDER_NO_FMT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private static final DateTimeFormatter VO_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public OrderVO createOrder(Long userId, CreateOrderDTO dto) {
-        if (dto.getSeatCount() == null || dto.getSeatCount() <= 0) {
-            throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "购票数量不合法");
-        }
+        Timer.Sample sample = businessMetrics.startTimer();
+        boolean success = false;
+        try {
+            if (dto.getSeatCount() == null || dto.getSeatCount() <= 0) {
+                throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "购票数量不合法");
+            }
 
-        Long scheduleId = dto.getScheduleId();
-        OrderVO result = lockService.executeWithBoundedLock("seat:" + scheduleId, 3, 12,
-                () -> createOrderInTransaction(userId, dto));
-        if (result == null) {
-            throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "系统繁忙，请重试");
+            Long scheduleId = dto.getScheduleId();
+            OrderVO result = lockService.executeWithBoundedLock("seat:" + scheduleId, 3, 12,
+                    () -> createOrderInTransaction(userId, dto));
+            if (result == null) {
+                throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "系统繁忙，请重试");
+            }
+            success = true;
+            return result;
+        } finally {
+            businessMetrics.stopOrderCreate(sample, success);
         }
-        return result;
     }
 
     private OrderVO createOrderInTransaction(Long userId, CreateOrderDTO dto) {
@@ -142,9 +153,11 @@ public class OrderService {
 
             refreshScheduleDetailCache(scheduleId);
             orderEventOutboxService.append(OrderEvent.Type.CREATED, order);
+            OrderVO result = toVO(order);
+            businessMetrics.orderCreated();
             log.info("[Order] Created: orderNo={}, userId={}, scheduleId={}, seats={}, total={}",
                     orderNo, userId, scheduleId, seatCount, order.getTotalPrice());
-            return toVO(order);
+            return result;
         } catch (BizException e) {
             if (e.getCode() != ResponseCodeEnum.STOCK_NOT_ENOUGH.getCode()) {
                 stockService.rollback(scheduleId, seatCount);
@@ -363,17 +376,22 @@ public class OrderService {
 
     @Scheduled(fixedDelay = 60000)
     public void cancelExpiredOrders() {
-        LocalDateTime now = LocalDateTime.now();
-        List<OrderPO> expired = orderMapper.selectExpiredPendingOrders(now, 100);
-        if (expired.isEmpty()) {
-            return;
-        }
-        for (OrderPO order : expired) {
-            try {
-                orderClosureService.closeExpiredOrder(order.getOrderNo(), "TIMEOUT_SCHEDULER");
-            } catch (Exception e) {
-                log.error("[Order] Failed to close expired order: orderNo={}", order.getOrderNo(), e);
+        TraceContext.setOrGenerate(null);
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            List<OrderPO> expired = orderMapper.selectExpiredPendingOrders(now, 100);
+            if (expired.isEmpty()) {
+                return;
             }
+            for (OrderPO order : expired) {
+                try {
+                    orderClosureService.closeExpiredOrder(order.getOrderNo(), "TIMEOUT_SCHEDULER");
+                } catch (Exception e) {
+                    log.error("[Order] Failed to close expired order: orderNo={}", order.getOrderNo(), e);
+                }
+            }
+        } finally {
+            TraceContext.clear();
         }
     }
 

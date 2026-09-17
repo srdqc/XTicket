@@ -2,6 +2,7 @@ package com.maoyan.service.mq;
 
 import com.maoyan.common.constants.CacheConstants;
 import com.maoyan.common.constants.MQConstants;
+import com.maoyan.common.observability.TraceContext;
 import com.maoyan.dao.mapper.ConsumedEventMapper;
 import com.maoyan.domain.model.event.OrderEvent;
 import com.maoyan.service.cache.MultiLevelCacheService;
@@ -46,8 +47,10 @@ public class OrderEventConsumer implements RocketMQListener<OrderEvent>, RocketM
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void onMessage(OrderEvent event) {
-        log.info("[OrderConsumer] Received: type={}, orderNo={}", event.getType(), event.getOrderNo());
+        TraceContext.setOrGenerate(event.getTraceId());
         try {
+            log.info("[OrderConsumer] Received: eventId={}, type={}, orderNo={}",
+                    event.getEventId(), event.getType(), event.getOrderNo());
             if (event.getEventId() != null && !event.getEventId().isBlank()
                     && consumedEventMapper.insertIfAbsent(MQConstants.ORDER_CONSUMER_GROUP,
                     event.getEventId(), LocalDateTime.now()) == 0) {
@@ -62,8 +65,11 @@ public class OrderEventConsumer implements RocketMQListener<OrderEvent>, RocketM
                 case REFUNDED -> handleOrderRefunded(event);
             }
         } catch (Exception e) {
-            log.error("[OrderConsumer] Process failed: orderNo={}", event.getOrderNo(), e);
+            log.error("[OrderConsumer] Process failed: eventId={}, type={}, orderNo={}",
+                    event.getEventId(), event.getType(), event.getOrderNo(), e);
             throw new RuntimeException("订单事件处理失败，触发重试", e);
+        } finally {
+            TraceContext.clear();
         }
     }
 

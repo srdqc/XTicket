@@ -2,6 +2,7 @@ package com.maoyan.dao.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.maoyan.domain.model.po.OutboxEventPO;
+import com.maoyan.domain.model.dto.OutboxStatusCountDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -50,4 +51,12 @@ public interface OutboxEventMapper extends BaseMapper<OutboxEventPO> {
             """)
     int markFailed(@Param("id") Long id, @Param("nextRetryTime") LocalDateTime nextRetryTime,
                    @Param("lastError") String lastError, @Param("now") LocalDateTime now);
+
+    @Select("""
+            SELECT status, COUNT(*) AS count
+            FROM outbox_event
+            WHERE status IN ('PENDING', 'FAILED', 'PROCESSING')
+            GROUP BY status
+            """)
+    List<OutboxStatusCountDTO> selectObservableStatusCounts();
 }

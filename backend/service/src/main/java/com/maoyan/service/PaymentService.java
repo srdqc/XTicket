@@ -18,6 +18,8 @@ import com.maoyan.domain.model.po.UserPO;
 import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
 import com.maoyan.service.event.OrderEventOutboxService;
+import com.maoyan.service.observability.BusinessMetrics;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -45,6 +47,7 @@ public class PaymentService {
     private final OrderClosureService orderClosureService;
     private final TicketService ticketService;
     private final OrderEventOutboxService orderEventOutboxService;
+    private final BusinessMetrics businessMetrics;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter PAYMENT_NO_FMT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
@@ -53,12 +56,25 @@ public class PaymentService {
 
     @Transactional(rollbackFor = Exception.class, timeout = 8)
     public OrderVO payOrder(Long userId, String orderNo) {
-        OrderVO result = lockService.executeWithBoundedLock("pay:" + orderNo, 3, 12,
-                () -> payOrderInLock(userId, orderNo));
-        if (result == null) {
-            throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "支付处理中，请稍后重试");
+        Timer.Sample sample = businessMetrics.startTimer();
+        boolean success = false;
+        try {
+            OrderVO result = lockService.executeWithBoundedLock("pay:" + orderNo, 3, 12,
+                    () -> payOrderInLock(userId, orderNo));
+            if (result == null) {
+                throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "支付处理中，请稍后重试");
+            }
+            success = true;
+            return result;
+        } catch (BizException e) {
+            businessMetrics.paymentFailure(paymentFailureReason(e.getCode()));
+            throw e;
+        } catch (RuntimeException e) {
+            businessMetrics.paymentFailure("other");
+            throw e;
+        } finally {
+            businessMetrics.stopPayment(sample, success);
         }
-        return result;
     }
 
     private OrderVO payOrderInLock(Long userId, String orderNo) {
@@ -119,7 +135,27 @@ public class PaymentService {
         OrderVO vo = toVO(order);
         UserPO updatedUser = userMapper.selectById(userId);
         vo.setRemainingPoints(updatedUser != null ? updatedUser.getPoints() : 0);
+        businessMetrics.paymentSuccess();
         return vo;
+    }
+
+    private String paymentFailureReason(int code) {
+        if (code == ResponseCodeEnum.NOT_FOUND.getCode()) {
+            return "not_found";
+        }
+        if (code == ResponseCodeEnum.SEAT_LOCK_EXPIRED.getCode()) {
+            return "seat_lock_expired";
+        }
+        if (code == ResponseCodeEnum.ORDER_CREATE_FAILED.getCode()) {
+            return "busy";
+        }
+        if (code == ResponseCodeEnum.CONFLICT.getCode()) {
+            return "state_conflict";
+        }
+        if (code == ResponseCodeEnum.BAD_REQUEST.getCode()) {
+            return "not_payable";
+        }
+        return "other";
     }
 
     private void insertPaymentRecord(OrderPO order, LocalDateTime now) {
