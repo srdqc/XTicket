@@ -50,11 +50,14 @@ WHERE LEFT(u.account, 11) = 'BENCH_USER_'
         docker compose exec -T redis redis-cli DEL "schedule:stock:$sessionId" "session:detail:$sessionId" | Out-Null
         docker compose exec -T redis redis-cli SET "schedule:stock:$sessionId" 20000 EX 86400 | Out-Null
     }
-    foreach ($userId in $userIds) {
-        $keys = @(docker compose exec -T redis redis-cli --scan --pattern "rate_limit:*:user:${userId}:*")
-        foreach ($key in $keys) {
-            if ($key) { docker compose exec -T redis redis-cli DEL $key | Out-Null }
-        }
+    $userIdSet = @{}
+    foreach ($userId in $userIds) { $userIdSet[[string]$userId] = $true }
+    $rateLimitKeys = @(docker compose exec -T redis redis-cli --scan --pattern 'rate_limit:*:user:*')
+    $ownedRateLimitKeys = @($rateLimitKeys | Where-Object {
+        $_ -match ':user:(\d+):' -and $userIdSet.ContainsKey($Matches[1])
+    })
+    if ($ownedRateLimitKeys.Count -gt 0) {
+        docker compose exec -T redis redis-cli DEL $ownedRateLimitKeys | Out-Null
     }
 
     [pscustomobject]@{

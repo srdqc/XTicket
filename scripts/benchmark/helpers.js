@@ -1,4 +1,4 @@
-import { Counter } from 'k6/metrics';
+import { Counter, Trend } from 'k6/metrics';
 import { check } from 'k6';
 import { RECORD_METRICS, SEAT_COLS, SEAT_ROWS } from './config.js';
 
@@ -12,6 +12,7 @@ export const timeoutError = new Counter('timeout_error');
 export const parseError = new Counter('parse_error');
 export const transactionSuccess = new Counter('transaction_success');
 export const transactionFailed = new Counter('transaction_failed');
+export const transactionDuration = new Trend('transaction_duration', true);
 
 export const Classification = Object.freeze({
   SUCCESS: 'SUCCESS',
@@ -67,7 +68,7 @@ export function recordResult(response, label) {
 }
 
 export function loadBenchmarkUsers() {
-  const path = __ENV.TOKEN_FILE || './results/raw/tokens.json';
+  const path = __ENV.TOKEN_FILE || import.meta.resolve('./results/raw/tokens.json');
   const users = JSON.parse(open(path));
   if (!Array.isArray(users) || users.length === 0) {
     throw new Error(`No benchmark users in ${path}; run prepare.ps1 first`);

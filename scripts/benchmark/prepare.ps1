@@ -64,7 +64,8 @@ try {
     $rawDir = Join-Path $PSScriptRoot 'results\raw'
     New-Item -ItemType Directory -Force $rawDir | Out-Null
     $tokenPath = Join-Path $rawDir 'tokens.json'
-    $users | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 $tokenPath
+    $tokenJson = $users | ConvertTo-Json -Depth 4
+    [IO.File]::WriteAllText($tokenPath, $tokenJson, (New-Object Text.UTF8Encoding($false)))
 
     [pscustomobject]@{
         status = 'PREPARE_OK'

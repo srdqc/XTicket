@@ -22,7 +22,6 @@ export function standardOptions() {
   return {
     vus: VUS,
     duration: DURATION,
-    gracefulStop: '5s',
     thresholds: RECORD_METRICS ? {
       system_error: ['count==0'],
       network_error: ['count==0'],

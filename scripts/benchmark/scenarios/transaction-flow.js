@@ -3,7 +3,8 @@ import exec from 'k6/execution';
 import { BASE_URL, SAME_SESSION_ID, RECORD_METRICS, standardOptions } from '../config.js';
 import {
   authHeaders, Classification, loadBenchmarkUsers, recordResult,
-  seatForOrdinal, traceId, transactionFailed, transactionSuccess, userForIteration,
+  seatForOrdinal, traceId, transactionDuration, transactionFailed,
+  transactionSuccess, userForIteration,
 } from '../helpers.js';
 
 export const options = standardOptions();
@@ -15,6 +16,7 @@ export default function () {
   const seat = seatForOrdinal(iteration);
   const trace = traceId('transaction', iteration);
   const requestOptions = authHeaders(user, trace);
+  const transactionStartedAt = Date.now();
 
   const lock = http.post(`${BASE_URL}/api/seat/lock`, JSON.stringify({
     scheduleId: SAME_SESSION_ID,
@@ -43,7 +45,10 @@ export default function () {
   const paymentResult = recordResult(payment, 'transaction-payment');
   if (paymentResult.category !== Classification.SUCCESS) return failTransaction(paymentResult.category);
 
-  if (RECORD_METRICS) transactionSuccess.add(1);
+  if (RECORD_METRICS) {
+    transactionDuration.add(Date.now() - transactionStartedAt);
+    transactionSuccess.add(1);
+  }
 }
 
 function failTransaction(category) {
