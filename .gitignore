@@ -48,3 +48,6 @@ upload/
 META-INF/
 docs/
 .codex/
+
+# Benchmark runtime secrets and raw output
+scripts/benchmark/results/raw/
