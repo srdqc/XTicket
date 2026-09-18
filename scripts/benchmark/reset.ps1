@@ -9,6 +9,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $mysqlCommand = 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" "$MYSQL_DATABASE" --default-character-set=utf8mb4 --batch --raw'
+$mysqlScalarCommand = 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u"$MYSQL_USER" "$MYSQL_DATABASE" --default-character-set=utf8mb4 --skip-column-names --batch --raw'
 
 if ($ObservationCheckpointSeconds -lt 1) { throw 'ObservationCheckpointSeconds must be positive' }
 if ($DrainTimeoutSeconds -le $ObservationCheckpointSeconds) {
@@ -23,9 +24,14 @@ function Invoke-Db([string]$Sql) {
 }
 
 function Get-Scalar([string]$Sql) {
-    $rows = @(Invoke-Db $Sql)
-    if ($rows.Count -lt 2) { return 0 }
-    return [long](($rows[1] -split "`t")[0])
+    $output = $Sql | docker compose exec -T mysql sh -lc $script:mysqlScalarCommand 2>&1
+    if ($LASTEXITCODE -ne 0) { throw (($output | Out-String).Trim()) }
+    $rows = @($output | Where-Object {
+        $_ -and -not $_.StartsWith('mysql: [Warning]')
+    } | ForEach-Object { $_.Trim() } | Where-Object { $_.Length -gt 0 })
+    if ($rows.Count -eq 0) { throw 'SCALAR_RESULT_EMPTY' }
+    if ($rows.Count -gt 1) { throw "SCALAR_RESULT_MULTIPLE_ROWS: count=$($rows.Count)" }
+    return [long]$rows[0]
 }
 
 function Get-OutboxState {
