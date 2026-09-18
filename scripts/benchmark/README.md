@@ -43,7 +43,9 @@ Authenticated write limits use resource plus JWT user ID, not the shared client 
 - order create: token bucket capacity 10, refill 3/s/user
 - payment: token bucket capacity 5, refill 2/s/user
 
-Scripts rotate prepared users by global iteration. RATE_LIMITED is reported separately and never hidden. If it becomes material, the run is a rate-limit workload and cannot be used as a transaction baseline.
+Lock scripts deterministically partition the prepared user pool by VU and rotate only inside each VU's partition. Their default 0.5-second iteration pacing keeps account reuse below the production seat-lock refill rate through the approved 1/10/25/50 VU matrix. Same-session and different-session workloads use exactly the same assignment and pacing. RATE_LIMITED is reported separately and never hidden; a material count marks the run `WORKLOAD_RATE_LIMITED` and disqualifies the lock comparison.
+
+The transaction workload retains global-iteration rotation across all 100 users. Its three-request transaction rate keeps per-account lock/create/payment frequency below the corresponding production limits; it does not bypass authentication or change limiter keys.
 
 ## Scenarios
 
@@ -90,7 +92,9 @@ k6 run -e PHASE=measurement -e CONTENDERS=5 .\scenarios\same-seat-contention.js
 
 ## Reset and Outbox safety
 
-`reset.ps1` waits up to 30 seconds for benchmark PENDING/PROCESSING/FAILED Outbox rows to drain. Timeout marks the run invalid and cleanup stops. It then deletes only business rows owned by exact `BENCH_USER_` accounts, restores user points and reserved session stock, deletes only reserved session cache keys, restores their Redis stock, and removes only those users' rate-limit keys. It never truncates tables or runs `FLUSHALL`.
+`reset.ps1` treats 30 seconds as an observation checkpoint, not a publication SLA. It records open rows at measurement end, 10 seconds and 30 seconds, plus peak status counts and time-to-zero. `ASYNC_BACKLOG_PRESENT` at 30 seconds is reportable but does not by itself invalidate transaction TPS or latency.
+
+Cleanup has a bounded 120-second safety timeout. It starts only after PENDING, PROCESSING and unrecovered FAILED rows are zero, every published benchmark event has a matching `maoyan_order_consumer_group` consumption record, expected and actual event counts match, and no benchmark orphan event exists. A safety timeout or integrity failure stops before fixture deletion, so reset never removes an undrained event. After the gate, cleanup remains restricted to exact `BENCH_USER_` data and reserved sessions; it never truncates tables or runs `FLUSHALL`.
 
 Run reset between every write round:
 
@@ -100,6 +104,8 @@ Run reset between every write round:
 
 ## Environment and evidence
 
-Copy `environment-template.md` and `results/summary-template.md` for each final Phase 6B-2 run. Capture small Actuator snapshots before and after using internal `/actuator/metrics/<metric>` queries. Keep only normalized summaries in Git; raw JSON, CSV, request logs, JWTs and large time series belong under ignored `results/raw/`.
+`run-one.ps1` starts `metrics-sampler.ps1` for the measurement window and stops it immediately after k6 exits. The default two-second sampler reaches Actuator only through `docker compose exec backend` and `127.0.0.1:8080`, so samples do not traverse Nginx or enter k6 workload counts. Raw JSONL and an aggregate JSON record CPU peak/median, heap peak, GC deltas, thread peak, Hikari peaks and Outbox peaks.
+
+Copy `environment-template.md` and `results/summary-template.md` for each final Phase 6B-2 run. Keep only normalized summaries in Git; raw JSON, CSV, request logs, JWTs and large time series belong under ignored `results/raw/`.
 
 Final scenarios require three comparable runs and median/min/max reporting. Do not select the best run, do not describe local results as production capacity, and do not change locks, indexes, pools, JVM, logging or rate limits during a baseline series.

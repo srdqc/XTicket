@@ -23,7 +23,20 @@
 | P99 | | | | | | |
 | Max | | | | | | |
 | Outbox peak pending | | | | | | |
+| Outbox peak processing | | | | | | |
+| Outbox peak failed | | | | | | |
+| Outbox open at measurement end | | | | | | |
+| Outbox open at 10s | | | | | | |
+| Outbox open at 30s | | | | | | |
+| Outbox time to zero | | | | | | |
 | Outbox final pending | | | | | | |
+| CPU peak | | | | | | |
+| CPU median | | | | | | |
+| JVM heap peak | | | | | | |
+| JVM GC count delta | | | | | | |
+| JVM GC time delta | | | | | | |
+| JVM thread peak | | | | | | |
+| Hikari peak active | | | | | | |
 | Hikari peak pending | | | | | | |
 
 ## JVM and runtime notes

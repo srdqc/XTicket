@@ -4,6 +4,7 @@
     [Parameter(Mandatory = $true)][int]$Run,
     [string]$Duration = '60s',
     [string]$WarmupDuration = '30s',
+    [int]$SamplerIntervalSeconds = 2,
     [switch]$SkipWarmup,
     [switch]$WriteWorkload
 )
@@ -80,10 +81,43 @@ function Invoke-K6Native(
     return [int]$exitCode
 }
 
-function Invoke-Reset {
-    $result = & (Join-Path $benchmarkRoot 'reset.ps1')
+function Invoke-Reset([string]$DrainStartedAtUtc) {
+    $result = & (Join-Path $benchmarkRoot 'reset.ps1') -DrainStartedAtUtc $DrainStartedAtUtc
     if ($LASTEXITCODE -ne 0) { throw "Reset failed: $result" }
-    return ($result | Out-String).Trim()
+    return (($result | Out-String).Trim() | ConvertFrom-Json)
+}
+
+function Start-MetricsSampler(
+    [string]$OutputPath,
+    [string]$SummaryPath,
+    [string]$StopPath
+) {
+    if (Test-Path -LiteralPath $StopPath) { Remove-Item -LiteralPath $StopPath -Force }
+    return Start-Job -FilePath (Join-Path $benchmarkRoot 'metrics-sampler.ps1') -ArgumentList @(
+        $OutputPath, $SummaryPath, $StopPath, $SamplerIntervalSeconds, $repoRoot
+    )
+}
+
+function Stop-MetricsSampler($Job, [string]$StopPath, [string]$SummaryPath) {
+    New-Item -ItemType File -Path $StopPath -Force | Out-Null
+    $completed = Wait-Job -Job $Job -Timeout 20
+    if ($null -eq $completed) {
+        Stop-Job -Job $Job
+        Remove-Job -Job $Job -Force
+        throw 'Metrics sampler did not stop within 20 seconds'
+    }
+    $jobOutput = @(Receive-Job -Job $Job -ErrorAction SilentlyContinue)
+    $jobState = $Job.State
+    $jobReason = $Job.ChildJobs[0].JobStateInfo.Reason
+    Remove-Job -Job $Job -Force
+    Remove-Item -LiteralPath $StopPath -Force -ErrorAction SilentlyContinue
+    if ($jobState -ne 'Completed') {
+        throw "Metrics sampler failed: $jobState $jobReason $($jobOutput -join ' ')"
+    }
+    if (-not (Test-Path -LiteralPath $SummaryPath -PathType Leaf)) {
+        throw "Metrics sampler summary missing: $SummaryPath"
+    }
+    return (Get-Content -Raw -LiteralPath $SummaryPath | ConvertFrom-Json)
 }
 
 Push-Location $benchmarkRoot
@@ -98,7 +132,9 @@ try {
         )
         Invoke-K6Native $warmupArgs $warmupLog $warmupSummary `
             @('http_reqs', 'http_req_duration', 'vus_max') $VUs | Out-Null
-        if ($WriteWorkload) { Invoke-Reset | Out-Null }
+        if ($WriteWorkload) {
+            Invoke-Reset ([DateTimeOffset]::UtcNow.ToString('o')) | Out-Null
+        }
     }
 
     $summaryPath = Join-Path $rawDir "$name.json"
@@ -112,8 +148,18 @@ try {
     if ($Scenario -eq 'transaction-flow') {
         $required += @('transaction_success', 'transaction_duration')
     }
-    $exitCode = Invoke-K6Native $measureArgs $logPath $summaryPath $required $VUs
-    if ($WriteWorkload) { Invoke-Reset | Out-Null }
+    $metricsPath = Join-Path $rawDir "$name-metrics.jsonl"
+    $metricsSummaryPath = Join-Path $rawDir "$name-metrics-summary.json"
+    $samplerStopPath = Join-Path $rawDir "$name-metrics.stop"
+    $samplerJob = Start-MetricsSampler $metricsPath $metricsSummaryPath $samplerStopPath
+    try {
+        $exitCode = Invoke-K6Native $measureArgs $logPath $summaryPath $required $VUs
+        $measurementEndedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    } finally {
+        $metricsSummary = Stop-MetricsSampler $samplerJob $samplerStopPath $metricsSummaryPath
+    }
+    $cleanup = $null
+    if ($WriteWorkload) { $cleanup = Invoke-Reset $measurementEndedAt }
 
     [pscustomobject]@{
         status = 'RUN_OK'
@@ -123,6 +169,9 @@ try {
         exitCode = $exitCode
         summary = $summaryPath
         log = $logPath
+        metrics = $metricsSummaryPath
+        metricsSummary = $metricsSummary
+        cleanup = $cleanup
     } | ConvertTo-Json -Compress
 } finally {
     Pop-Location

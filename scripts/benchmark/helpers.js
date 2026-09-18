@@ -80,6 +80,18 @@ export function userForIteration(users, iteration) {
   return users[iteration % users.length];
 }
 
+export function userForVuIteration(users, vuId, iteration, totalVUs) {
+  if (!Number.isInteger(vuId) || vuId < 1 || !Number.isInteger(totalVUs) || totalVUs < 1) {
+    throw new Error(`Invalid VU partition: vuId=${vuId}, totalVUs=${totalVUs}`);
+  }
+  const usersPerVu = Math.floor(users.length / totalVUs);
+  if (usersPerVu < 1 || vuId > totalVUs) {
+    throw new Error(`User pool cannot partition ${users.length} users across ${totalVUs} VUs`);
+  }
+  const partitionStart = (vuId - 1) * usersPerVu;
+  return users[partitionStart + (iteration % usersPerVu)];
+}
+
 export function authHeaders(user, traceId) {
   return {
     headers: {
