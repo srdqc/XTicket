@@ -53,6 +53,7 @@ The transaction workload retains global-iteration rotation across all 100 users.
 |---|---|
 | `read-activities.js` | Activity list warm-cache read |
 | `read-seat-layout.js` | Fixed benchmark session layout read |
+| `read-seat-layout-compact.js` | Compact fixed benchmark session layout read |
 | `lock-same-session.js` | Different users/seats under one `seat:{scheduleId}` lock key |
 | `lock-different-session.js` | Equivalent locks distributed over eight lock keys |
 | `same-seat-contention.js` | Correctness-only contention; exactly one winner expected |
