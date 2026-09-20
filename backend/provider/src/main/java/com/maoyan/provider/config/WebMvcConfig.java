@@ -38,7 +38,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/checkin/**"   // 工作人员核销
                 )
                 .excludePathPatterns(
-                        "/api/seat/layout"      // 查看座位布局无需登录
+                        "/api/seat/layout",         // 查看座位布局无需登录
+                        "/api/seat/layout/compact"  // 查看紧凑座位布局无需登录
                 );
     }
 

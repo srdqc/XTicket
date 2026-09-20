@@ -3,6 +3,7 @@ package com.maoyan.provider.controller;
 import com.maoyan.common.annotation.RateLimit;
 import com.maoyan.common.enums.RateLimitAlgorithm;
 import com.maoyan.domain.model.dto.LockSeatsDTO;
+import com.maoyan.domain.model.vo.CompactSeatLayoutVO;
 import com.maoyan.domain.model.vo.Result;
 import com.maoyan.domain.model.vo.SeatLayoutVO;
 import com.maoyan.service.SeatService;
@@ -65,6 +66,17 @@ public class SeatController {
             HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         return Result.ok(seatService.getSeatLayout(scheduleId, userId != null ? userId : 0L));
+    }
+
+    /**
+     * 获取紧凑座位布局（含实时锁定/已售状态）。
+     */
+    @GetMapping("/layout/compact")
+    public Result<CompactSeatLayoutVO> getCompactSeatLayout(
+            @RequestParam Long scheduleId,
+            HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        return Result.ok(seatService.getCompactSeatLayout(scheduleId, userId != null ? userId : 0L));
     }
 
     /**

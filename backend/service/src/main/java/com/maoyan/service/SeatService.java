@@ -10,6 +10,7 @@ import com.maoyan.domain.enums.ResponseCodeEnum;
 import com.maoyan.domain.exception.BizException;
 import com.maoyan.domain.model.dto.LockSeatsDTO;
 import com.maoyan.domain.model.po.*;
+import com.maoyan.domain.model.vo.CompactSeatLayoutVO;
 import com.maoyan.domain.model.vo.SeatLayoutVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
 import com.maoyan.service.observability.BusinessMetrics;
@@ -58,6 +59,66 @@ public class SeatService {
      * 获取座位布局 + 实时状态
      */
     public SeatLayoutVO getSeatLayout(Long scheduleId, Long userId) {
+        VenueHallPO hall = loadHall(scheduleId);
+        return buildSeatLayout(hall, scheduleId, userId);
+    }
+
+    /**
+     * 获取紧凑座位布局，不创建逐座 SeatInfo 对象。
+     */
+    public CompactSeatLayoutVO getCompactSeatLayout(Long scheduleId, Long userId) {
+        VenueHallPO hall = loadHall(scheduleId);
+        int rows = hall.getSeatRows();
+        int cols = hall.getSeatCols();
+
+        Set<Integer> disabled = parseDisabledSeatIndexes(hall.getDisabledSeats(), rows, cols);
+        Set<Integer> sold = orderSeatMapper.selectPurchasedSeats(scheduleId).stream()
+                .map(seat -> toSeatIndex(seat.getRowNum(), seat.getColNum(), rows, cols))
+                .filter(Objects::nonNull)
+                .filter(index -> !disabled.contains(index))
+                .collect(Collectors.toCollection(TreeSet::new));
+
+        Map<Integer, SeatLockPO> locksByIndex = new LinkedHashMap<>();
+        for (SeatLockPO lock : seatLockMapper.selectActiveLocks(scheduleId, LocalDateTime.now())) {
+            Integer index = toSeatIndex(lock.getRowNum(), lock.getColNum(), rows, cols);
+            if (index != null) {
+                locksByIndex.putIfAbsent(index, lock);
+            }
+        }
+
+        Set<Integer> locked = new TreeSet<>();
+        Set<Integer> myLocked = new TreeSet<>();
+        for (Map.Entry<Integer, SeatLockPO> entry : locksByIndex.entrySet()) {
+            Integer index = entry.getKey();
+            if (disabled.contains(index) || sold.contains(index)) {
+                continue;
+            }
+            if (Objects.equals(entry.getValue().getUserId(), userId)) {
+                myLocked.add(index);
+            } else {
+                locked.add(index);
+            }
+        }
+
+        CompactSeatLayoutVO.LayoutMetadata metadata = new CompactSeatLayoutVO.LayoutMetadata();
+        metadata.setRows(rows);
+        metadata.setCols(cols);
+        metadata.setAisles(parseIntList(hall.getAisleAfterCol()));
+        metadata.setCoupleRows(parseIntList(hall.getCoupleRows()));
+        metadata.setDisabled(new ArrayList<>(disabled));
+
+        CompactSeatLayoutVO result = new CompactSeatLayoutVO();
+        result.setSessionId(scheduleId);
+        result.setHallName(hall.getHallName());
+        result.setHallType(hall.getHallType());
+        result.setLayout(metadata);
+        result.setSold(new ArrayList<>(sold));
+        result.setLocked(new ArrayList<>(locked));
+        result.setMyLocked(new ArrayList<>(myLocked));
+        return result;
+    }
+
+    private VenueHallPO loadHall(Long scheduleId) {
         ActivitySessionPO schedule = activitySessionMapper.selectById(scheduleId);
         if (schedule == null || schedule.getDeleted() == 1) {
             throw new BizException(ResponseCodeEnum.NOT_FOUND.getCode(), "场次不存在");
@@ -69,8 +130,7 @@ public class SeatService {
             // 使用默认布局（10行14列，过道在3、11列后）
             hall = buildDefaultHall(schedule.getVenueId(), schedule.getHallName());
         }
-
-        return buildSeatLayout(hall, scheduleId, userId);
+        return hall;
     }
 
     /**
@@ -314,5 +374,28 @@ public class SeatService {
             log.warn("解析不可用座位JSON失败: {}", json, e);
             return Collections.emptySet();
         }
+    }
+
+    private Set<Integer> parseDisabledSeatIndexes(String json, int rows, int cols) {
+        Set<Integer> indexes = new TreeSet<>();
+        for (String seat : parseDisabledSeats(json)) {
+            String[] coordinates = seat.split(",", 2);
+            Integer index = toSeatIndex(
+                    Integer.parseInt(coordinates[0]),
+                    Integer.parseInt(coordinates[1]),
+                    rows,
+                    cols);
+            if (index != null) {
+                indexes.add(index);
+            }
+        }
+        return indexes;
+    }
+
+    private Integer toSeatIndex(Integer row, Integer col, int rows, int cols) {
+        if (row == null || col == null || row < 1 || row > rows || col < 1 || col > cols) {
+            return null;
+        }
+        return (row - 1) * cols + (col - 1);
     }
 }

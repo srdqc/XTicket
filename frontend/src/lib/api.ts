@@ -96,9 +96,13 @@ const api = {
 
   // ==================== 座位相关 ====================
 
-  /** 获取座位布局 */
+  /** 获取旧版完整座位布局（兼容/A-B 验证） */
   getSeatLayout: (params: { scheduleId: number }) =>
     authInstance.get('/seat/layout', { params }).then((res) => res.data),
+
+  /** 获取紧凑座位布局 */
+  getCompactSeatLayout: (params: { scheduleId: number }) =>
+    authInstance.get('/seat/layout/compact', { params }).then((res) => res.data),
 
   /** 锁定座位 */
   lockSeats: (data: LockSeatsRequest) =>
