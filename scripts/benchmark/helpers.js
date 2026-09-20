@@ -13,6 +13,12 @@ export const parseError = new Counter('parse_error');
 export const transactionSuccess = new Counter('transaction_success');
 export const transactionFailed = new Counter('transaction_failed');
 export const transactionDuration = new Trend('transaction_duration', true);
+export const transactionLockDuration = new Trend('transaction_lock_duration', true);
+export const transactionCreateDuration = new Trend('transaction_create_duration', true);
+export const transactionPaymentDuration = new Trend('transaction_payment_duration', true);
+export const transactionLockSuccess = new Counter('transaction_lock_success');
+export const transactionCreateSuccess = new Counter('transaction_create_success');
+export const transactionPaymentSuccess = new Counter('transaction_payment_success');
 
 export const Classification = Object.freeze({
   SUCCESS: 'SUCCESS',

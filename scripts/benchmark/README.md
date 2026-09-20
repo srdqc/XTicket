@@ -33,7 +33,7 @@ HTTP 200 alone is not success. `helpers.js` parses `Result.code` and classifies:
 - transport failure: NETWORK_ERROR or TIMEOUT
 - invalid JSON: PARSE_ERROR
 
-Metrics are `app_success`, `business_conflict`, `rate_limited`, `auth_failure`, `system_error`, `network_error`, `timeout_error`, `parse_error`, `transaction_success`, and `transaction_failed`. No user, order, ticket or seat is used as a metric tag.
+Metrics are `app_success`, `business_conflict`, `rate_limited`, `auth_failure`, `system_error`, `network_error`, `timeout_error`, `parse_error`, `transaction_success`, and `transaction_failed`. Transaction profiling also records `transaction_lock_duration`, `transaction_create_duration`, `transaction_payment_duration`, and a success counter for each stage. No user, order, ticket or seat is used as a metric tag.
 
 ## Rate-limit boundary
 
@@ -58,7 +58,7 @@ The transaction workload retains global-iteration rotation across all 100 users.
 | `same-seat-contention.js` | Correctness-only contention; exactly one winner expected |
 | `transaction-flow.js` | lock → create → payment; all three must succeed for one transaction |
 
-Transaction TPS means `transaction_success / measurement seconds`. HTTP RPS still contains all three requests and must not be presented as TPS.
+Transaction TPS means `transaction_success / measurement seconds`. HTTP RPS still contains all three requests and must not be presented as TPS. Stage duration is measured around the corresponding complete HTTP request; full transaction duration remains lock request start through payment success response end.
 
 ## Warmup and measurement
 
