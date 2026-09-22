@@ -135,7 +135,7 @@ function Save-OrderCreateProfile([string]$OutputPath) {
         throw "Order Create profile JSON parse failed: $($_.Exception.Message)"
     }
     $criticalStages = @(
-        'request_validation', 'redisson_wait', 'load_session', 'cleanup_expired_locks',
+        'request_validation', 'redisson_wait', 'load_session',
         'idempotency_check', 'verify_locks', 'load_snapshot', 'redis_stock',
         'db_stock_update', 'order_insert', 'bind_locks', 'refresh_cache',
         'outbox_insert', 'response_mapping', 'tx_completion', 'response_enrichment'

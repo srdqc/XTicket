@@ -8,7 +8,7 @@ $benchmark = Join-Path $PSScriptRoot 'benchmark'
 $tokensPath = Join-Path $benchmark 'results\raw\tokens.json'
 if (-not (Test-Path -LiteralPath $tokensPath)) { throw 'Run benchmark prepare.ps1 first' }
 $users = @(Get-Content -Raw -LiteralPath $tokensPath | ConvertFrom-Json)
-if ($users.Count -lt 8) { throw 'At least 8 benchmark users are required' }
+if ($users.Count -lt 25) { throw 'At least 25 benchmark users are required' }
 
 function Invoke-Api([string]$Path, $User, $Body) {
     $headers = @{ Authorization = "Bearer $($User.token)"; 'X-Trace-Id' = "scope-$([guid]::NewGuid().ToString('N'))" }
@@ -63,14 +63,34 @@ function Reset-Fixture {
 
 function New-Seat([int]$Row, [int]$Col) { return @{ row = $Row; col = $Col } }
 function New-CreateBody([long]$SessionId, $Seat, [string]$LockToken) {
-    $body = @{ scheduleId = $SessionId; seats = @($Seat); seatCount = 1; seatsInfo = "$($Seat.row),$($Seat.col)" }
+    return New-MultiCreateBody $SessionId @($Seat) $LockToken
+}
+function New-MultiCreateBody([long]$SessionId, [array]$Seats, [string]$LockToken) {
+    $body = @{ scheduleId = $SessionId; seats = @($Seats); seatCount = $Seats.Count; seatsInfo = 'server-owned' }
     if ($LockToken) { $body.lockToken = $LockToken }
     return $body
 }
-function New-Request($User, $Body) {
-    return [pscustomobject]@{ path = '/api/order/create'; user = $User; json = ($Body | ConvertTo-Json -Depth 6 -Compress) }
+function New-Request($User, $Body, [string]$Path = '/api/order/create') {
+    return [pscustomobject]@{ path = $Path; user = $User; json = ($Body | ConvertTo-Json -Depth 6 -Compress) }
 }
 function Assert-True([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
+function Test-SameSessionDifferentSeats([int]$Count) {
+    Reset-Fixture
+    $sessionId = 910001L
+    $requests = @()
+    foreach ($i in 0..($Count - 1)) {
+        $currentSeat = New-Seat ([math]::Floor($i / 10) + 1) (($i % 10) + 1)
+        $currentLock = Invoke-Api '/api/seat/lock' $users[$i] @{ scheduleId = $sessionId; seats = @($currentSeat) }
+        Assert-True ($currentLock.code -eq 200) "same-session $Count lock $i failed"
+        $requests += New-Request $users[$i] (New-CreateBody $sessionId $currentSeat ([string]$currentLock.data.lockToken))
+    }
+    $responses = @(Invoke-Concurrent $requests)
+    $success = @($responses | Where-Object { $_.code -eq 200 }).Count
+    $orders = Db-Scalar "SELECT COUNT(*) FROM ticket_order WHERE schedule_id=$sessionId"
+    $dbStock = Db-Scalar "SELECT available_seats FROM activity_session WHERE id=$sessionId"
+    $redisStock = Redis-Stock $sessionId
+    Assert-True ($success -eq $Count -and $orders -eq $Count -and $dbStock -eq (20000 - $Count) -and $redisStock -eq (20000 - $Count)) "same-session $Count failed: success=$success orders=$orders db=$dbStock redis=$redisStock"
+}
 
 $results = [ordered]@{}
 Push-Location $root
@@ -99,17 +119,10 @@ try {
     Assert-True (@($responses | Where-Object { $_.code -eq 200 }).Count -eq 1 -and $sameSeatOrders -eq 1 -and (Redis-Stock $session) -eq 19999) '8-way same-seat failed'
     $results.sameSeat = 'PASS'
 
-    Reset-Fixture
-    $requests = @()
-    foreach ($i in 0..7) {
-        $currentSeat = New-Seat 1 ($i + 1)
-        $currentLock = Invoke-Api '/api/seat/lock' $users[$i] @{ scheduleId = $session; seats = @($currentSeat) }
-        Assert-True ($currentLock.code -eq 200) "same-session lock $i failed"
-        $requests += New-Request $users[$i] (New-CreateBody $session $currentSeat ([string]$currentLock.data.lockToken))
-    }
-    $responses = @(Invoke-Concurrent $requests)
-    Assert-True (@($responses | Where-Object { $_.code -eq 200 }).Count -eq 8 -and (Db-Scalar "SELECT COUNT(*) FROM ticket_order WHERE schedule_id=$session") -eq 8 -and (Redis-Stock $session) -eq 19992) 'same-session different-seat failed'
-    $results.sameSessionDifferentSeat = 'PASS'
+    Test-SameSessionDifferentSeats 8
+    Test-SameSessionDifferentSeats 16
+    Test-SameSessionDifferentSeats 25
+    $results.sameSessionDifferentSeat = 'PASS:8,16,25'
 
     Reset-Fixture
     $requests = @()
@@ -126,6 +139,38 @@ try {
     Assert-True (@($responses | Where-Object { $_.code -eq 200 }).Count -eq 8 -and $sessionOrderCount -eq 8 -and $stockSum -eq 159992) 'different-session create failed'
     $results.differentSession = 'PASS'
 
+    Reset-Fixture
+    $multi = @(New-Seat 2 1; New-Seat 2 2; New-Seat 2 3)
+    $multiLock = Invoke-Api '/api/seat/lock' $users[0] @{ scheduleId = $session; seats = $multi }
+    $multiCreate = Invoke-Api '/api/order/create' $users[0] (New-MultiCreateBody $session $multi ([string]$multiLock.data.lockToken))
+    Assert-True ($multiCreate.code -eq 200 -and (Db-Scalar "SELECT available_seats FROM activity_session WHERE id=$session") -eq 19997) 'multi-seat create failed'
+    $results.multiSeat = 'PASS'
+    Reset-Fixture
+    $pair = @(New-Seat 3 1; New-Seat 3 2)
+    $reverse = @($pair[1], $pair[0])
+    $responses = @(Invoke-Concurrent @(
+        (New-Request $users[0] (New-MultiCreateBody $session $pair $null)),
+        (New-Request $users[1] (New-MultiCreateBody $session $reverse $null))))
+    Assert-True (@($responses | Where-Object { $_.code -eq 200 }).Count -eq 1 -and (Db-Scalar "SELECT COUNT(*) FROM ticket_order WHERE schedule_id=$session") -eq 1) 'reverse-order contention failed'
+    $results.reverseOrder = 'PASS'
+    Reset-Fixture
+    $ten = @(1..10 | ForEach-Object { New-Seat 4 $_ })
+    $tenLock = Invoke-Api '/api/seat/lock' $users[24] @{ scheduleId = $session; seats = $ten }
+    Assert-True ($tenLock.code -eq 400 -and (Db-Scalar "SELECT COUNT(*) FROM seat_lock WHERE schedule_id=$session") -eq 0) '10-seat product limit failed'
+    $results.tenSeat = 'PASS:REJECTED_BY_PRODUCT_MAX_6'
+    Reset-Fixture
+    $old = Invoke-Api '/api/seat/lock' $users[0] @{ scheduleId = $session; seats = @(New-Seat 5 1) }
+    [void](Db-Scalar "UPDATE seat_lock SET lock_until=DATE_SUB(NOW(), INTERVAL 1 MINUTE) WHERE lock_token='$($old.data.lockToken)'; SELECT ROW_COUNT()")
+    $relock = Invoke-Api '/api/seat/lock' $users[1] @{ scheduleId = $session; seats = @(New-Seat 5 1) }
+    Assert-True ($relock.code -eq 200 -and (Db-Scalar "SELECT COUNT(*) FROM seat_lock WHERE schedule_id=$session AND row_num=5 AND col_num=1") -eq 1) 'expired target relock failed'
+    $results.expiredRelock = 'PASS'
+    Reset-Fixture
+    [void](Invoke-Api '/api/seat/lock' $users[0] @{ scheduleId = $session; seats = @(New-Seat 6 1) })
+    $responses = @(Invoke-Concurrent @(
+        (New-Request $users[0] @{ scheduleId = $session; seats = @(New-Seat 6 2) } '/api/seat/lock'),
+        (New-Request $users[0] @{ scheduleId = $session; seats = @(New-Seat 6 3) } '/api/seat/lock')))
+    Assert-True (@($responses | Where-Object { $_.code -eq 200 }).Count -eq 2 -and (Db-Scalar "SELECT COUNT(*) FROM seat_lock WHERE schedule_id=$session AND user_id=$($users[0].id) AND status=1 AND order_no IS NULL") -eq 1) 'concurrent selection replacement failed'
+    $results.selectionReplacement = 'PASS'
     Reset-Fixture
     $expiredLock = Invoke-Api '/api/seat/lock' $users[0] @{ scheduleId = $session; seats = @($seat) }
     $expiredToken = [string]$expiredLock.data.lockToken
