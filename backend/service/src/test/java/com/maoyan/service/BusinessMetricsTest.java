@@ -49,6 +49,8 @@ class BusinessMetricsTest {
         metrics.stopRefund(metrics.startTimer(), true);
         metrics.stopOutboxPublish(metrics.startTimer(), true);
         metrics.recordOrderCreateStage("load_session", 1_000_000L);
+        metrics.recordOrderCreateStage("pre_stock", 2_000_000L);
+        metrics.recordOrderCreateStage("post_stock_to_tx_end", 3_000_000L);
 
         assertThat(registry.timer("xticket.seat.lock.duration", "outcome", "success").count()).isEqualTo(1);
         assertThat(registry.timer("xticket.seat.lock.duration", "outcome", "failure").count()).isEqualTo(1);
@@ -63,5 +65,7 @@ class BusinessMetricsTest {
                     assertThat(snapshot.meanMs()).isGreaterThan(0);
                     assertThat(snapshot.p95Ms()).isNotNull();
                 });
+        assertThat(metrics.orderCreateStageSnapshots().get("pre_stock").count()).isEqualTo(1);
+        assertThat(metrics.orderCreateStageSnapshots().get("post_stock_to_tx_end").count()).isEqualTo(1);
     }
 }

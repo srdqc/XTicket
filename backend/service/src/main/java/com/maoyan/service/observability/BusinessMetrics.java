@@ -29,7 +29,8 @@ public class BusinessMetrics {
     private static final String[] ORDER_CREATE_STAGES = {
             "request_validation", "redisson_wait", "load_session", "cleanup_expired_locks",
             "create_missing_lock", "idempotency_check", "verify_locks", "load_snapshot",
-            "redis_stock", "db_stock_update", "order_insert", "bind_locks", "refresh_cache",
+            "redis_stock", "pre_stock", "db_stock_update", "post_stock_to_tx_end",
+            "order_insert", "bind_locks", "refresh_cache",
             "outbox_insert", "response_mapping", "tx_completion", "response_enrichment"
     };
 

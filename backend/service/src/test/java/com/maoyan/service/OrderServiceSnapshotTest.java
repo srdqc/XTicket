@@ -22,6 +22,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -41,6 +42,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
@@ -120,6 +122,15 @@ class OrderServiceSnapshotTest {
         assertThat(result.getSeatsInfo()).isEqualTo("1排4座,2排3座");
         verify(activitySessionMapper).deductStock(40L, 2);
         verify(businessMetrics).orderCreated();
+        InOrder writeOrder = inOrder(orderMapper, seatLockMapper, orderEventOutboxService,
+                activitySessionMapper, stockService);
+        writeOrder.verify(orderMapper).insert(any(OrderPO.class));
+        writeOrder.verify(seatLockMapper).bindLocksToOrder(eq(40L), eq(1001L), eq("lock-token-1"),
+                anyString(), any(LocalDateTime.class), any(LocalDateTime.class));
+        writeOrder.verify(orderEventOutboxService).append(
+                eq(com.maoyan.domain.model.event.OrderEvent.Type.CREATED), any(OrderPO.class));
+        writeOrder.verify(activitySessionMapper).deductStock(40L, 2);
+        writeOrder.verify(stockService).initScheduleDetail(any(ActivitySessionPO.class));
     }
 
     @Test
@@ -183,7 +194,6 @@ class OrderServiceSnapshotTest {
                 .thenReturn(List.of(lock(4, 6)));
         when(activitySessionMapper.selectOrderSnapshotSource(40L)).thenReturn(snapshot());
         when(stockService.preDeduct(40L, 1)).thenReturn(219L);
-        when(activitySessionMapper.deductStock(40L, 1)).thenReturn(1);
         when(orderMapper.insert(any(OrderPO.class))).thenReturn(1);
         when(seatLockMapper.bindLocksToOrder(eq(40L), eq(1001L), eq("lock-token-rollback"),
                 anyString(), any(LocalDateTime.class), any(LocalDateTime.class))).thenReturn(1);
@@ -199,10 +209,11 @@ class OrderServiceSnapshotTest {
         verify(transactionManager).rollback(any());
         verify(stockService).rollback(40L, 1);
         verify(orderMapper).insert(any(OrderPO.class));
+        verify(activitySessionMapper, never()).deductStock(anyLong(), anyInt());
     }
 
     @Test
-    void atomicStockFailureStopsAfterOneTransactionAndCompensatesRedisOnce() {
+    void atomicStockFailureRollsBackPriorWritesAndCompensatesRedisOnce() {
         CreateOrderDTO dto = orderRequest("lock-token-stock", List.of(seat(5, 7)), "client text");
         when(activitySessionMapper.selectById(40L)).thenReturn(activeSchedule());
         when(orderMapper.selectByLockToken("lock-token-stock")).thenReturn(null);
@@ -210,6 +221,9 @@ class OrderServiceSnapshotTest {
                 .thenReturn(List.of(lock(5, 7)));
         when(activitySessionMapper.selectOrderSnapshotSource(40L)).thenReturn(snapshot());
         when(stockService.preDeduct(40L, 1)).thenReturn(219L);
+        when(orderMapper.insert(any(OrderPO.class))).thenReturn(1);
+        when(seatLockMapper.bindLocksToOrder(eq(40L), eq(1001L), eq("lock-token-stock"),
+                anyString(), any(LocalDateTime.class), any(LocalDateTime.class))).thenReturn(1);
         when(activitySessionMapper.deductStock(40L, 1)).thenReturn(0);
 
         assertThatThrownBy(() -> orderService.createOrder(1001L, dto))
@@ -221,7 +235,12 @@ class OrderServiceSnapshotTest {
         verify(transactionManager).rollback(any());
         verify(stockService).preDeduct(40L, 1);
         verify(stockService).rollback(40L, 1);
-        verify(orderMapper, never()).insert(any(OrderPO.class));
+        verify(orderMapper).insert(any(OrderPO.class));
+        verify(seatLockMapper).bindLocksToOrder(eq(40L), eq(1001L), eq("lock-token-stock"),
+                anyString(), any(LocalDateTime.class), any(LocalDateTime.class));
+        verify(orderEventOutboxService).append(
+                eq(com.maoyan.domain.model.event.OrderEvent.Type.CREATED), any(OrderPO.class));
+        verify(stockService, never()).initScheduleDetail(any(ActivitySessionPO.class));
     }
 
     private static CreateOrderDTO orderRequest(String lockToken, List<LockSeatsDTO.SeatPos> seats, String seatsInfo) {

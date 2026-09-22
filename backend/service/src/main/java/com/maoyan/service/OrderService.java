@@ -142,7 +142,9 @@ public class OrderService {
     private OrderVO createOrderAttempt(Long userId, CreateOrderDTO dto,
                                        List<SeatLockKeys.Seat> canonicalSeats,
                                        Set<String> requestedSeats,
-                                       AtomicBoolean redisDebitApplied) {
+                                       AtomicBoolean redisDebitApplied,
+                                       long transactionWorkStarted,
+                                       AtomicLong stockSucceededAt) {
         Long scheduleId = dto.getScheduleId();
         int seatCount = dto.getSeatCount();
         LocalDateTime now = LocalDateTime.now();
@@ -183,12 +185,6 @@ public class OrderService {
         }
         redisDebitApplied.set(true);
 
-        int affected = profileOrderCreateStage("db_stock_update",
-                () -> activitySessionMapper.deductStock(scheduleId, seatCount));
-        if (affected == 0) {
-            throw new BizException(ResponseCodeEnum.STOCK_NOT_ENOUGH);
-        }
-
         String orderNo = generateOrderNo(userId);
         OrderPO order = buildPendingOrder(userId, snapshot, lockToken, orderNo, now, seatCount, seatsInfo);
         profileOrderCreateStage("order_insert", () -> orderMapper.insert(order));
@@ -200,9 +196,19 @@ public class OrderService {
             throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "锁座绑定数量不匹配，请重新选座");
         }
 
-        profileOrderCreateStage("refresh_cache", () -> refreshScheduleDetailCache(scheduleId));
         profileOrderCreateStage("outbox_insert",
                 () -> orderEventOutboxService.append(OrderEvent.Type.CREATED, order));
+
+        businessMetrics.recordOrderCreateStage("pre_stock",
+                System.nanoTime() - transactionWorkStarted);
+        int affected = profileOrderCreateStage("db_stock_update",
+                () -> activitySessionMapper.deductStock(scheduleId, seatCount));
+        if (affected == 0) {
+            throw new BizException(ResponseCodeEnum.STOCK_NOT_ENOUGH);
+        }
+        stockSucceededAt.set(System.nanoTime());
+
+        profileOrderCreateStage("refresh_cache", () -> refreshScheduleDetailCache(scheduleId));
         OrderVO result = profileOrderCreateStage("response_mapping", () -> toVO(order));
         businessMetrics.orderCreated();
         log.info("[Order] Created: orderNo={}, userId={}, scheduleId={}, seats={}, total={}",
@@ -414,17 +420,22 @@ public class OrderService {
         template.setTimeout(8);
         long transactionStarted = System.nanoTime();
         AtomicLong callbackNanos = new AtomicLong();
+        AtomicLong stockSucceededAt = new AtomicLong();
         try {
             return template.execute(status -> {
                 long callbackStarted = System.nanoTime();
                 try {
                     return createOrderAttempt(userId, dto, canonicalSeats, requestedSeats,
-                            redisDebitApplied);
+                            redisDebitApplied, callbackStarted, stockSucceededAt);
                 } finally {
                     callbackNanos.set(System.nanoTime() - callbackStarted);
                 }
             });
         } finally {
+            if (stockSucceededAt.get() > 0L) {
+                businessMetrics.recordOrderCreateStage("post_stock_to_tx_end",
+                        System.nanoTime() - stockSucceededAt.get());
+            }
             long completionNanos = System.nanoTime() - transactionStarted - callbackNanos.get();
             businessMetrics.recordOrderCreateStage("tx_completion", completionNanos);
         }
