@@ -25,6 +25,28 @@ public interface SeatLockMapper extends BaseMapper<SeatLockPO> {
     @Select("SELECT * FROM seat_lock WHERE schedule_id = #{scheduleId} AND row_num = #{row} AND col_num = #{col} AND ((status = 1 AND lock_until > #{now}) OR status = 2) LIMIT 1")
     SeatLockPO selectActiveLock(@Param("scheduleId") Long scheduleId, @Param("row") int row, @Param("col") int col, @Param("now") LocalDateTime now);
 
+    @Select("SELECT * FROM seat_lock WHERE schedule_id = #{scheduleId} AND row_num = #{row} AND col_num = #{col} LIMIT 1")
+    SeatLockPO selectSeatLock(@Param("scheduleId") Long scheduleId,
+                              @Param("row") int row,
+                              @Param("col") int col);
+
+    @Select("SELECT * FROM seat_lock WHERE schedule_id = #{scheduleId} AND row_num = #{row} AND col_num = #{col} LIMIT 1 FOR UPDATE")
+    SeatLockPO selectSeatLockForUpdate(@Param("scheduleId") Long scheduleId,
+                                       @Param("row") int row,
+                                       @Param("col") int col);
+
+    @Update("UPDATE seat_lock SET user_id = #{userId}, lock_token = #{lockToken}, order_no = NULL, lock_until = #{lockUntil}, status = 1, create_time = #{now}, update_time = #{now} WHERE id = #{id} AND order_no IS NULL AND (status = 0 OR (status = 1 AND lock_until <= #{now}))")
+    int reclaimSeatLock(@Param("id") Long id,
+                        @Param("userId") Long userId,
+                        @Param("lockToken") String lockToken,
+                        @Param("lockUntil") LocalDateTime lockUntil,
+                        @Param("now") LocalDateTime now);
+
+    @Update("UPDATE seat_lock SET status = 0, lock_until = #{now}, update_time = #{now} WHERE id = #{id} AND user_id = #{userId} AND status = 1 AND order_no IS NULL")
+    int releaseUserLockById(@Param("id") Long id,
+                            @Param("userId") Long userId,
+                            @Param("now") LocalDateTime now);
+
     /**
      * 释放用户在某场次的所有锁定座位
      */
@@ -42,6 +64,10 @@ public interface SeatLockMapper extends BaseMapper<SeatLockPO> {
      */
     @Select("SELECT * FROM seat_lock WHERE schedule_id = #{scheduleId} AND user_id = #{userId} AND status = 1 AND lock_until > #{now}")
     List<SeatLockPO> selectUserLocks(@Param("scheduleId") Long scheduleId, @Param("userId") Long userId, @Param("now") LocalDateTime now);
+
+    @Select("SELECT * FROM seat_lock WHERE schedule_id = #{scheduleId} AND user_id = #{userId} AND status = 1 AND order_no IS NULL ORDER BY row_num, col_num")
+    List<SeatLockPO> selectReplaceableUserLocks(@Param("scheduleId") Long scheduleId,
+                                                @Param("userId") Long userId);
 
     @Select("SELECT * FROM seat_lock WHERE schedule_id = #{scheduleId} AND user_id = #{userId} AND lock_token = #{lockToken} AND status = 1 AND lock_until > #{now}")
     List<SeatLockPO> selectActiveLocksByToken(@Param("scheduleId") Long scheduleId,
@@ -78,4 +104,10 @@ public interface SeatLockMapper extends BaseMapper<SeatLockPO> {
      */
     @Delete("DELETE FROM seat_lock WHERE status = 1 AND order_no IS NULL AND lock_until <= #{now}")
     int cleanExpiredLocks(@Param("now") LocalDateTime now);
+
+    @Delete("DELETE FROM seat_lock WHERE schedule_id = #{scheduleId} AND row_num = #{row} AND col_num = #{col} AND status = 1 AND order_no IS NULL AND lock_until <= #{now}")
+    int cleanExpiredLock(@Param("scheduleId") Long scheduleId,
+                         @Param("row") int row,
+                         @Param("col") int col,
+                         @Param("now") LocalDateTime now);
 }

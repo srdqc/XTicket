@@ -21,13 +21,13 @@ public interface ActivitySessionMapper extends BaseMapper<ActivitySessionPO> {
     List<ActivitySessionPO> selectByMovieAndDate(@Param("movieId") Long movieId, @Param("showDate") String showDate);
 
     /**
-     * 乐观锁扣减库存 — 防超卖核心 SQL
+     * 原子条件扣减库存 — 防超卖核心 SQL。
      *
-     * <p>只有 version 匹配且 available_seats >= seatCount 时才扣减，
-     * 返回影响行数：1=成功，0=版本冲突或库存不足</p>
+     * <p>InnoDB 在主键行锁内重新评估 available_seats >= seatCount，
+     * 返回影响行数：1=成功，0=库存不足或场次无效。</p>
      */
-    @Update("UPDATE activity_session SET available_seats = available_seats - #{seatCount}, version = version + 1, update_time = CURRENT_TIMESTAMP WHERE id = #{scheduleId} AND version = #{version} AND available_seats >= #{seatCount} AND deleted = 0")
-    int deductStock(@Param("scheduleId") Long scheduleId, @Param("seatCount") int seatCount, @Param("version") int version);
+    @Update("UPDATE activity_session SET available_seats = available_seats - #{seatCount}, version = version + 1, update_time = CURRENT_TIMESTAMP WHERE id = #{scheduleId} AND available_seats >= #{seatCount} AND deleted = 0")
+    int deductStock(@Param("scheduleId") Long scheduleId, @Param("seatCount") int seatCount);
 
     /**
      * 回滚库存（订单取消/退款时）

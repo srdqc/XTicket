@@ -6,6 +6,7 @@ import com.maoyan.dao.mapper.ActivitySessionMapper;
 import com.maoyan.dao.mapper.SeatLockMapper;
 import com.maoyan.domain.model.po.OrderPO;
 import com.maoyan.service.infrastructure.DistributedLockService;
+import com.maoyan.service.infrastructure.SeatLockClaimService;
 import com.maoyan.service.infrastructure.StockService;
 import com.maoyan.service.event.OrderEventOutboxService;
 import com.maoyan.service.observability.BusinessMetrics;
@@ -44,6 +45,8 @@ class OrderExpiredScanTest {
     @Mock
     private DistributedLockService lockService;
     @Mock
+    private SeatLockClaimService seatLockClaimService;
+    @Mock
     private PlatformTransactionManager transactionManager;
     @Mock
     private OrderClosureService orderClosureService;
@@ -73,7 +76,7 @@ class OrderExpiredScanTest {
     @Test
     void schedulerScansAtMostOneHundredExpiredPendingOrders() {
         OrderService orderService = new OrderService(orderMapper, activitySessionMapper, seatLockMapper, orderSeatMapper,
-                stockService, lockService, transactionManager, orderClosureService, orderEventOutboxService,
+                stockService, lockService, seatLockClaimService, transactionManager, orderClosureService, orderEventOutboxService,
                 businessMetrics);
         OrderPO order = new OrderPO();
         order.setOrderNo("MO_EXPIRED_001");
@@ -90,7 +93,7 @@ class OrderExpiredScanTest {
     @Test
     void schedulerDoesNothingWhenNoExpiredPendingOrdersFound() {
         OrderService orderService = new OrderService(orderMapper, activitySessionMapper, seatLockMapper, orderSeatMapper,
-                stockService, lockService, transactionManager, orderClosureService, orderEventOutboxService,
+                stockService, lockService, seatLockClaimService, transactionManager, orderClosureService, orderEventOutboxService,
                 businessMetrics);
         when(orderMapper.selectExpiredPendingOrders(any(LocalDateTime.class), eq(100))).thenReturn(List.of());
 

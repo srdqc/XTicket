@@ -14,6 +14,7 @@ import com.maoyan.domain.model.po.ActivitySessionPO;
 import com.maoyan.domain.model.po.SeatLockPO;
 import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
+import com.maoyan.service.infrastructure.SeatLockClaimService;
 import com.maoyan.service.infrastructure.StockService;
 import com.maoyan.service.event.OrderEventOutboxService;
 import com.maoyan.service.observability.BusinessMetrics;
@@ -36,10 +37,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -59,6 +62,8 @@ class OrderServiceSnapshotTest {
     @Mock
     private DistributedLockService lockService;
     @Mock
+    private SeatLockClaimService seatLockClaimService;
+    @Mock
     private PlatformTransactionManager transactionManager;
     @Mock
     private OrderClosureService orderClosureService;
@@ -72,10 +77,10 @@ class OrderServiceSnapshotTest {
     @BeforeEach
     void setUp() {
         orderService = new OrderService(orderMapper, activitySessionMapper, seatLockMapper, orderSeatMapper,
-                stockService, lockService, transactionManager, orderClosureService, orderEventOutboxService,
+                stockService, lockService, seatLockClaimService, transactionManager, orderClosureService, orderEventOutboxService,
                 businessMetrics);
-        when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
-        when(lockService.<OrderVO>executeWithBoundedLock(anyString(), anyLong(), anyLong(), any()))
+        lenient().when(transactionManager.getTransaction(any())).thenAnswer(invocation -> new SimpleTransactionStatus());
+        when(lockService.<OrderVO>executeWithBoundedLocks(anyList(), anyLong(), anyLong(), any()))
                 .thenAnswer(invocation -> {
                     @SuppressWarnings("unchecked")
                     Supplier<OrderVO> task = invocation.getArgument(3, Supplier.class);
@@ -92,7 +97,7 @@ class OrderServiceSnapshotTest {
                 .thenReturn(List.of(lock(2, 3), lock(1, 4)));
         when(activitySessionMapper.selectOrderSnapshotSource(40L)).thenReturn(snapshot());
         when(stockService.preDeduct(40L, 2)).thenReturn(218L);
-        when(activitySessionMapper.deductStock(40L, 2, 7)).thenReturn(1);
+        when(activitySessionMapper.deductStock(40L, 2)).thenReturn(1);
         when(orderMapper.insert(any(OrderPO.class))).thenReturn(1);
         when(seatLockMapper.bindLocksToOrder(eq(40L), eq(1001L), eq("lock-token-1"),
                 anyString(), any(LocalDateTime.class), any(LocalDateTime.class))).thenReturn(2);
@@ -113,7 +118,7 @@ class OrderServiceSnapshotTest {
 
         assertThat(result.getMovieName()).isEqualTo("Snapshot Movie");
         assertThat(result.getSeatsInfo()).isEqualTo("1排4座,2排3座");
-        verify(activitySessionMapper).deductStock(40L, 2, 7);
+        verify(activitySessionMapper).deductStock(40L, 2);
         verify(businessMetrics).orderCreated();
     }
 
@@ -134,7 +139,7 @@ class OrderServiceSnapshotTest {
                 .isEqualTo(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode());
 
         verify(stockService, never()).preDeduct(anyLong(), anyInt());
-        verify(activitySessionMapper, never()).deductStock(anyLong(), anyInt(), anyInt());
+        verify(activitySessionMapper, never()).deductStock(anyLong(), anyInt());
         verify(orderMapper, never()).insert(any(OrderPO.class));
     }
 
@@ -155,7 +160,6 @@ class OrderServiceSnapshotTest {
         existing.setUnitPrice(new BigDecimal("50.00"));
         existing.setTotalPrice(new BigDecimal("50.00"));
         existing.setStatus(0);
-        when(activitySessionMapper.selectById(40L)).thenReturn(activeSchedule());
         when(orderMapper.selectByLockToken("lock-token-3")).thenReturn(existing);
         when(seatLockMapper.selectLocksByToken("lock-token-3")).thenReturn(List.of(lock(3, 5)));
 
@@ -179,7 +183,7 @@ class OrderServiceSnapshotTest {
                 .thenReturn(List.of(lock(4, 6)));
         when(activitySessionMapper.selectOrderSnapshotSource(40L)).thenReturn(snapshot());
         when(stockService.preDeduct(40L, 1)).thenReturn(219L);
-        when(activitySessionMapper.deductStock(40L, 1, 7)).thenReturn(1);
+        when(activitySessionMapper.deductStock(40L, 1)).thenReturn(1);
         when(orderMapper.insert(any(OrderPO.class))).thenReturn(1);
         when(seatLockMapper.bindLocksToOrder(eq(40L), eq(1001L), eq("lock-token-rollback"),
                 anyString(), any(LocalDateTime.class), any(LocalDateTime.class))).thenReturn(1);
@@ -195,6 +199,29 @@ class OrderServiceSnapshotTest {
         verify(transactionManager).rollback(any());
         verify(stockService).rollback(40L, 1);
         verify(orderMapper).insert(any(OrderPO.class));
+    }
+
+    @Test
+    void atomicStockFailureStopsAfterOneTransactionAndCompensatesRedisOnce() {
+        CreateOrderDTO dto = orderRequest("lock-token-stock", List.of(seat(5, 7)), "client text");
+        when(activitySessionMapper.selectById(40L)).thenReturn(activeSchedule());
+        when(orderMapper.selectByLockToken("lock-token-stock")).thenReturn(null);
+        when(seatLockMapper.selectActiveLocksByTokenOnly(eq("lock-token-stock"), any()))
+                .thenReturn(List.of(lock(5, 7)));
+        when(activitySessionMapper.selectOrderSnapshotSource(40L)).thenReturn(snapshot());
+        when(stockService.preDeduct(40L, 1)).thenReturn(219L);
+        when(activitySessionMapper.deductStock(40L, 1)).thenReturn(0);
+
+        assertThatThrownBy(() -> orderService.createOrder(1001L, dto))
+                .isInstanceOf(BizException.class)
+                .extracting(ex -> ((BizException) ex).getCode())
+                .isEqualTo(ResponseCodeEnum.STOCK_NOT_ENOUGH.getCode());
+
+        verify(transactionManager).getTransaction(any());
+        verify(transactionManager).rollback(any());
+        verify(stockService).preDeduct(40L, 1);
+        verify(stockService).rollback(40L, 1);
+        verify(orderMapper, never()).insert(any(OrderPO.class));
     }
 
     private static CreateOrderDTO orderRequest(String lockToken, List<LockSeatsDTO.SeatPos> seats, String seatsInfo) {
@@ -227,16 +254,25 @@ class OrderServiceSnapshotTest {
     }
 
     private static ActivitySessionPO activeSchedule() {
+        return activeSchedule(7);
+    }
+
+    private static ActivitySessionPO activeSchedule(int version) {
         ActivitySessionPO schedule = new ActivitySessionPO();
         schedule.setId(40L);
         schedule.setDeleted(0);
         schedule.setStatus(1);
-        schedule.setVersion(7);
+        schedule.setVersion(version);
+        schedule.setAvailableSeats(220);
         schedule.setPrice(new BigDecimal("65.00"));
         return schedule;
     }
 
     private static OrderSnapshotSourceDTO snapshot() {
+        return snapshot(7);
+    }
+
+    private static OrderSnapshotSourceDTO snapshot(int version) {
         OrderSnapshotSourceDTO snapshot = new OrderSnapshotSourceDTO();
         snapshot.setScheduleId(40L);
         snapshot.setMovieId(3L);
@@ -248,7 +284,7 @@ class OrderServiceSnapshotTest {
         snapshot.setShowTime("11:00");
         snapshot.setUnitPrice(new BigDecimal("65.00"));
         snapshot.setStatus(1);
-        snapshot.setVersion(7);
+        snapshot.setVersion(version);
         return snapshot;
     }
 }

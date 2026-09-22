@@ -19,6 +19,8 @@ import com.maoyan.domain.model.po.ActivitySessionPO;
 import com.maoyan.domain.model.po.SeatLockPO;
 import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
+import com.maoyan.service.infrastructure.SeatLockClaimService;
+import com.maoyan.service.infrastructure.SeatLockKeys;
 import com.maoyan.service.infrastructure.StockService;
 import com.maoyan.service.event.OrderEventOutboxService;
 import com.maoyan.service.observability.BusinessMetrics;
@@ -35,7 +37,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -56,6 +57,7 @@ public class OrderService {
     private final OrderSeatMapper orderSeatMapper;
     private final StockService stockService;
     private final DistributedLockService lockService;
+    private final SeatLockClaimService seatLockClaimService;
     private final PlatformTransactionManager transactionManager;
     private final OrderClosureService orderClosureService;
     private final OrderEventOutboxService orderEventOutboxService;
@@ -68,21 +70,25 @@ public class OrderService {
         Timer.Sample sample = businessMetrics.startTimer();
         boolean success = false;
         try {
-            profileOrderCreateStage("request_validation", () -> {
+            List<SeatLockKeys.Seat> canonicalSeats = profileOrderCreateStage("request_validation", () -> {
                 if (dto.getSeatCount() == null || dto.getSeatCount() <= 0) {
                     throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "购票数量不合法");
                 }
+                normalizeRequestSeats(dto, dto.getSeatCount());
+                return canonicalRequestSeats(dto);
             });
 
             Long scheduleId = dto.getScheduleId();
             long lockWaitStarted = System.nanoTime();
             AtomicBoolean lockEntered = new AtomicBoolean(false);
-            OrderVO result = lockService.executeWithBoundedLock("seat:" + scheduleId, 3, 12,
+            OrderVO result = lockService.executeWithBoundedLocks(
+                    SeatLockKeys.seatKeys(scheduleId, canonicalSeats),
+                    SeatLockKeys.WAIT_SECONDS, SeatLockKeys.LEASE_SECONDS,
                     () -> {
                         lockEntered.set(true);
                         businessMetrics.recordOrderCreateStage("redisson_wait",
                                 System.nanoTime() - lockWaitStarted);
-                        return createOrderInTransaction(userId, dto);
+                        return createOrderWithAtomicStockDeduct(userId, dto, canonicalSeats);
                     });
             if (result == null) {
                 if (!lockEntered.get()) {
@@ -98,26 +104,45 @@ public class OrderService {
         }
     }
 
-    private OrderVO createOrderInTransaction(Long userId, CreateOrderDTO dto) {
-        TransactionTemplate template = new TransactionTemplate(transactionManager);
-        template.setTimeout(8);
+    private OrderVO createOrderWithAtomicStockDeduct(Long userId, CreateOrderDTO dto,
+                                                      List<SeatLockKeys.Seat> canonicalSeats) {
+        String lockToken = normalize(dto.getLockToken());
+        Set<String> requestedSeats = normalizeRequestSeats(dto, dto.getSeatCount());
+        OrderPO existingOrder = profileOrderCreateStage("idempotency_check",
+                () -> lockToken == null ? null : orderMapper.selectByLockToken(lockToken));
+        if (existingOrder != null) {
+            return handleConsumedLockToken(userId, dto, lockToken, requestedSeats, existingOrder);
+        }
+
+        AtomicBoolean redisDebitApplied = new AtomicBoolean(false);
         try {
-            return executeProfiledTransaction(template, userId, dto);
+            return executeProfiledTransaction(
+                    userId, dto, canonicalSeats, requestedSeats, redisDebitApplied);
         } catch (DuplicateKeyException e) {
-            String lockToken = normalize(dto.getLockToken());
+            compensateRedisStock(dto.getScheduleId(), dto.getSeatCount(), redisDebitApplied);
             if (lockToken == null) {
                 throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "lockToken 已被消费，请重新查询订单");
             }
-            OrderPO existingOrder = orderMapper.selectByLockToken(lockToken);
-            if (existingOrder == null) {
+            OrderPO concurrentOrder = orderMapper.selectByLockToken(lockToken);
+            if (concurrentOrder == null) {
                 throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "lockToken 已被消费，请重新查询订单");
             }
-            Set<String> requestedSeats = normalizeRequestSeats(dto, dto.getSeatCount());
-            return handleConsumedLockToken(userId, dto, lockToken, requestedSeats, existingOrder);
+            return handleConsumedLockToken(userId, dto, lockToken, requestedSeats, concurrentOrder);
+        } catch (BizException e) {
+            compensateRedisStock(dto.getScheduleId(), dto.getSeatCount(), redisDebitApplied);
+            throw e;
+        } catch (Exception e) {
+            compensateRedisStock(dto.getScheduleId(), dto.getSeatCount(), redisDebitApplied);
+            log.error("[Order] Create failed after Redis stock debit handling: scheduleId={}, seats={}",
+                    dto.getScheduleId(), dto.getSeatCount(), e);
+            throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED);
         }
     }
 
-    private OrderVO createOrderInScheduleLock(Long userId, CreateOrderDTO dto) {
+    private OrderVO createOrderAttempt(Long userId, CreateOrderDTO dto,
+                                       List<SeatLockKeys.Seat> canonicalSeats,
+                                       Set<String> requestedSeats,
+                                       AtomicBoolean redisDebitApplied) {
         Long scheduleId = dto.getScheduleId();
         int seatCount = dto.getSeatCount();
         LocalDateTime now = LocalDateTime.now();
@@ -128,15 +153,12 @@ public class OrderService {
             throw new BizException(ResponseCodeEnum.NOT_FOUND.getCode(), "场次不存在或已停售");
         }
 
-        profileOrderCreateStage("cleanup_expired_locks", () -> seatLockMapper.cleanExpiredLocks(now));
-
         String lockToken = normalize(dto.getLockToken());
         if (lockToken == null) {
             lockToken = profileOrderCreateStage("create_missing_lock",
-                    () -> lockSeatsForOrder(userId, schedule, dto, now));
+                    () -> lockSeatsForOrder(userId, schedule, canonicalSeats, now));
         }
 
-        Set<String> requestedSeats = normalizeRequestSeats(dto, seatCount);
         String effectiveLockToken = lockToken;
         OrderPO existingOrder = profileOrderCreateStage("idempotency_check",
                 () -> orderMapper.selectByLockToken(effectiveLockToken));
@@ -159,97 +181,52 @@ public class OrderService {
         if (remaining < 0) {
             throw new BizException(ResponseCodeEnum.STOCK_NOT_ENOUGH);
         }
+        redisDebitApplied.set(true);
 
-        try {
-            int affected = profileOrderCreateStage("db_stock_update",
-                    () -> activitySessionMapper.deductStock(scheduleId, seatCount, snapshot.getVersion()));
-            if (affected == 0) {
-                throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "库存扣减失败，请重新下单");
-            }
-
-            String orderNo = generateOrderNo(userId);
-            OrderPO order = buildPendingOrder(userId, snapshot, lockToken, orderNo, now, seatCount, seatsInfo);
-            profileOrderCreateStage("order_insert", () -> orderMapper.insert(order));
-
-            int bound = profileOrderCreateStage("bind_locks",
-                    () -> seatLockMapper.bindLocksToOrder(scheduleId, userId, effectiveLockToken, orderNo,
-                            order.getExpireTime(), now));
-            if (bound != seatCount) {
-                throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "锁座绑定数量不匹配，请重新选座");
-            }
-
-            profileOrderCreateStage("refresh_cache", () -> refreshScheduleDetailCache(scheduleId));
-            profileOrderCreateStage("outbox_insert",
-                    () -> orderEventOutboxService.append(OrderEvent.Type.CREATED, order));
-            OrderVO result = profileOrderCreateStage("response_mapping", () -> toVO(order));
-            businessMetrics.orderCreated();
-            log.info("[Order] Created: orderNo={}, userId={}, scheduleId={}, seats={}, total={}",
-                    orderNo, userId, scheduleId, seatCount, order.getTotalPrice());
-            return result;
-        } catch (BizException e) {
-            if (e.getCode() != ResponseCodeEnum.STOCK_NOT_ENOUGH.getCode()) {
-                stockService.rollback(scheduleId, seatCount);
-            }
-            throw e;
-        } catch (DuplicateKeyException e) {
-            stockService.rollback(scheduleId, seatCount);
-            log.warn("[Order] Duplicate lockToken when creating order, stock rolled back: scheduleId={}, lockToken={}",
-                    scheduleId, maskLockToken(lockToken));
-            throw e;
-        } catch (Exception e) {
-            stockService.rollback(scheduleId, seatCount);
-            log.error("[Order] Create failed, stock rolled back: scheduleId={}, seats={}", scheduleId, seatCount, e);
-            throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED);
+        int affected = profileOrderCreateStage("db_stock_update",
+                () -> activitySessionMapper.deductStock(scheduleId, seatCount));
+        if (affected == 0) {
+            throw new BizException(ResponseCodeEnum.STOCK_NOT_ENOUGH);
         }
+
+        String orderNo = generateOrderNo(userId);
+        OrderPO order = buildPendingOrder(userId, snapshot, lockToken, orderNo, now, seatCount, seatsInfo);
+        profileOrderCreateStage("order_insert", () -> orderMapper.insert(order));
+
+        int bound = profileOrderCreateStage("bind_locks",
+                () -> seatLockMapper.bindLocksToOrder(scheduleId, userId, effectiveLockToken, orderNo,
+                        order.getExpireTime(), now));
+        if (bound != seatCount) {
+            throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "锁座绑定数量不匹配，请重新选座");
+        }
+
+        profileOrderCreateStage("refresh_cache", () -> refreshScheduleDetailCache(scheduleId));
+        profileOrderCreateStage("outbox_insert",
+                () -> orderEventOutboxService.append(OrderEvent.Type.CREATED, order));
+        OrderVO result = profileOrderCreateStage("response_mapping", () -> toVO(order));
+        businessMetrics.orderCreated();
+        log.info("[Order] Created: orderNo={}, userId={}, scheduleId={}, seats={}, total={}",
+                orderNo, userId, scheduleId, seatCount, order.getTotalPrice());
+        return result;
     }
 
-    private String lockSeatsForOrder(Long userId, ActivitySessionPO schedule, CreateOrderDTO dto, LocalDateTime now) {
-        List<LockSeatsDTO.SeatPos> seats = dto.getSeats();
-        if (seats == null || seats.isEmpty()) {
-            throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "请选择座位");
-        }
-        if (seats.size() != dto.getSeatCount()) {
-            throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "座位数量与购票数量不一致");
-        }
-
+    private String lockSeatsForOrder(Long userId, ActivitySessionPO schedule,
+                                     List<SeatLockKeys.Seat> seats, LocalDateTime now) {
         Long scheduleId = schedule.getId();
-        seatLockMapper.releaseUserLocks(scheduleId, userId, now);
-
-        Set<String> requested = new HashSet<>();
-        for (LockSeatsDTO.SeatPos seat : seats) {
-            String seatKey = seat.getRow() + "," + seat.getCol();
-            if (!requested.add(seatKey)) {
-                throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "不能重复选择同一座位");
-            }
-            SeatLockPO existing = seatLockMapper.selectActiveLock(scheduleId, seat.getRow(), seat.getCol(), now);
-            if (existing != null) {
-                throw new BizException(ResponseCodeEnum.SEAT_LOCKED);
-            }
-        }
-
         Set<String> soldSeats = orderSeatMapper.selectPurchasedSeats(scheduleId).stream()
                 .map(os -> os.getRowNum() + "," + os.getColNum())
                 .collect(Collectors.toSet());
-        for (LockSeatsDTO.SeatPos seat : seats) {
-            if (soldSeats.contains(seat.getRow() + "," + seat.getCol())) {
+        for (SeatLockKeys.Seat seat : seats) {
+            if (soldSeats.contains(seat.row() + "," + seat.col())) {
                 throw new BizException(ResponseCodeEnum.SEAT_LOCKED);
             }
         }
 
         String lockToken = UUID.randomUUID().toString().replace("-", "");
         LocalDateTime lockUntil = now.plusMinutes(CacheConstants.SEAT_LOCK_MINUTES);
-        for (LockSeatsDTO.SeatPos seat : seats) {
-            SeatLockPO lock = new SeatLockPO();
-            lock.setScheduleId(scheduleId);
-            lock.setRowNum(seat.getRow());
-            lock.setColNum(seat.getCol());
-            lock.setUserId(userId);
-            lock.setLockToken(lockToken);
-            lock.setLockUntil(lockUntil);
-            lock.setStatus(1);
-            lock.setCreateTime(now);
-            lock.setUpdateTime(now);
-            seatLockMapper.insert(lock);
+        for (SeatLockKeys.Seat seat : seats) {
+            seatLockClaimService.claim(scheduleId, seat.row(), seat.col(), userId, lockToken,
+                    lockUntil, now, seats.size());
         }
         return lockToken;
     }
@@ -324,6 +301,12 @@ public class OrderService {
             throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "座位数量与购票数量不一致");
         }
         return requestSeats;
+    }
+
+    private List<SeatLockKeys.Seat> canonicalRequestSeats(CreateOrderDTO dto) {
+        return SeatLockKeys.canonicalize(dto.getSeats().stream()
+                .map(seat -> new SeatLockKeys.Seat(seat.getRow(), seat.getCol()))
+                .toList());
     }
 
     private Set<String> normalizeLockedSeats(List<SeatLockPO> lockedSeats) {
@@ -423,14 +406,20 @@ public class OrderService {
         }
     }
 
-    private OrderVO executeProfiledTransaction(TransactionTemplate template, Long userId, CreateOrderDTO dto) {
+    private OrderVO executeProfiledTransaction(Long userId, CreateOrderDTO dto,
+                                                List<SeatLockKeys.Seat> canonicalSeats,
+                                                Set<String> requestedSeats,
+                                                AtomicBoolean redisDebitApplied) {
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setTimeout(8);
         long transactionStarted = System.nanoTime();
         AtomicLong callbackNanos = new AtomicLong();
         try {
             return template.execute(status -> {
                 long callbackStarted = System.nanoTime();
                 try {
-                    return createOrderInScheduleLock(userId, dto);
+                    return createOrderAttempt(userId, dto, canonicalSeats, requestedSeats,
+                            redisDebitApplied);
                 } finally {
                     callbackNanos.set(System.nanoTime() - callbackStarted);
                 }
@@ -438,6 +427,12 @@ public class OrderService {
         } finally {
             long completionNanos = System.nanoTime() - transactionStarted - callbackNanos.get();
             businessMetrics.recordOrderCreateStage("tx_completion", completionNanos);
+        }
+    }
+
+    private void compensateRedisStock(Long scheduleId, int seatCount, AtomicBoolean redisDebitApplied) {
+        if (redisDebitApplied.compareAndSet(true, false)) {
+            stockService.rollback(scheduleId, seatCount);
         }
     }
 

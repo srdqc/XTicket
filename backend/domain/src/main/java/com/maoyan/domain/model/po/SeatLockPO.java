@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
  *
  * <h3>设计要点：</h3>
  * <ul>
- *   <li>schedule_id + row_num + col_num + status 组成唯一约束，防止同一座位被重复锁定</li>
+ *   <li>schedule_id + row_num + col_num 组成唯一约束，防止同一座位出现多条锁记录</li>
  *   <li>lock_until 记录锁定到期时间（通常15分钟），超时自动释放</li>
  *   <li>status 状态机：1(锁定中) → 2(已购买) 或 1(锁定中) → 0(已释放/超时)</li>
  *   <li>配合 Redis 分布式锁使用，DB 锁记录作为最终一致性保障</li>

@@ -7,6 +7,8 @@ import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -133,6 +135,49 @@ public class DistributedLockService {
             if (acquired && lock.isHeldByCurrentThread()) {
                 lock.unlock();
                 log.debug("[Lock] Released bounded lock: {}", fullKey);
+            }
+        }
+    }
+
+    /**
+     * Acquire an already-canonicalized lock set against one shared wait deadline.
+     * Locks are always released in reverse order, including partial acquisition failures.
+     */
+    public <T> T executeWithBoundedLocks(List<String> lockKeys, long waitTime,
+                                         long maxLeaseTime, Supplier<T> task) {
+        if (redissonClient == null || lockKeys.isEmpty()) {
+            return task.get();
+        }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(waitTime);
+        long leaseNanos = TimeUnit.SECONDS.toNanos(maxLeaseTime);
+        List<RLock> acquiredLocks = new ArrayList<>(lockKeys.size());
+        try {
+            for (String lockKey : lockKeys) {
+                long remainingNanos = deadline - System.nanoTime();
+                if (remainingNanos <= 0) {
+                    log.warn("[Lock] Shared deadline exhausted before acquiring: {}", lockKey);
+                    return null;
+                }
+                String fullKey = CacheConstants.LOCK_PREFIX + lockKey;
+                RLock lock = redissonClient.getLock(fullKey);
+                if (!lock.tryLock(remainingNanos, leaseNanos, TimeUnit.NANOSECONDS)) {
+                    log.warn("[Lock] Failed to acquire bounded lock set member: {}", fullKey);
+                    return null;
+                }
+                acquiredLocks.add(lock);
+                log.debug("[Lock] Acquired bounded lock set member: {}, lease={}s", fullKey, maxLeaseTime);
+            }
+            return task.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("[Lock] Interrupted while acquiring bounded lock set");
+            return null;
+        } finally {
+            for (int index = acquiredLocks.size() - 1; index >= 0; index--) {
+                RLock lock = acquiredLocks.get(index);
+                if (lock.isHeldByCurrentThread()) {
+                    lock.unlock();
+                }
             }
         }
     }
