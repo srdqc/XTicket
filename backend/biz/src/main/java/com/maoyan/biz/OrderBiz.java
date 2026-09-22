@@ -8,6 +8,7 @@ import com.maoyan.service.ActivityService;
 import com.maoyan.service.ActivitySessionService;
 import com.maoyan.service.OrderService;
 import com.maoyan.service.RefundService;
+import com.maoyan.service.observability.BusinessMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -23,10 +24,12 @@ public class OrderBiz {
     private final ActivitySessionService activitySessionService;
     private final ActivityService activityService;
     private final RefundService refundService;
+    private final BusinessMetrics businessMetrics;
 
     public OrderVO createOrder(Long userId, CreateOrderDTO dto) {
         OrderVO orderVO = orderService.createOrder(userId, dto);
 
+        long enrichmentStarted = System.nanoTime();
         try {
             ActivitySessionPO schedule = activitySessionService.getSessionById(dto.getScheduleId());
             if (schedule != null) {
@@ -38,6 +41,9 @@ public class OrderBiz {
             }
         } catch (Exception e) {
             log.warn("Failed to enrich order snapshot", e);
+        } finally {
+            businessMetrics.recordOrderCreateStage("response_enrichment",
+                    System.nanoTime() - enrichmentStarted);
         }
 
         return orderVO;

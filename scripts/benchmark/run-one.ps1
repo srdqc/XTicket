@@ -6,7 +6,8 @@
     [string]$WarmupDuration = '30s',
     [int]$SamplerIntervalSeconds = 2,
     [switch]$SkipWarmup,
-    [switch]$WriteWorkload
+    [switch]$WriteWorkload,
+    [switch]$CaptureOrderCreateProfile
 )
 
 Set-StrictMode -Version Latest
@@ -120,6 +121,35 @@ function Stop-MetricsSampler($Job, [string]$StopPath, [string]$SummaryPath) {
     return (Get-Content -Raw -LiteralPath $SummaryPath | ConvertFrom-Json)
 }
 
+function Save-OrderCreateProfile([string]$OutputPath) {
+    $composePath = Join-Path $repoRoot 'docker-compose.yml'
+    $profileOutput = & docker compose -f $composePath exec -T backend `
+        wget -qO- http://127.0.0.1:8080/actuator/ordercreateprofile 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Order Create profile capture failed: $($profileOutput -join ' ')"
+    }
+    $profileJson = ($profileOutput | Out-String).Trim()
+    try {
+        $profile = $profileJson | ConvertFrom-Json
+    } catch {
+        throw "Order Create profile JSON parse failed: $($_.Exception.Message)"
+    }
+    $criticalStages = @(
+        'request_validation', 'redisson_wait', 'load_session', 'cleanup_expired_locks',
+        'idempotency_check', 'verify_locks', 'load_snapshot', 'redis_stock',
+        'db_stock_update', 'order_insert', 'bind_locks', 'refresh_cache',
+        'outbox_insert', 'response_mapping', 'tx_completion', 'response_enrichment'
+    )
+    foreach ($stage in $criticalStages) {
+        $property = $profile.PSObject.Properties[$stage]
+        if ($null -eq $property -or [long]$property.Value.count -le 0) {
+            throw "Order Create profile stage count is zero or missing: $stage"
+        }
+    }
+    [IO.File]::WriteAllText($OutputPath, $profileJson, [Text.UTF8Encoding]::new($false))
+    return $profile
+}
+
 Push-Location $benchmarkRoot
 try {
     if (-not $SkipWarmup) {
@@ -158,6 +188,12 @@ try {
     } finally {
         $metricsSummary = Stop-MetricsSampler $samplerJob $samplerStopPath $metricsSummaryPath
     }
+    $profilePath = $null
+    $profileSnapshot = $null
+    if ($CaptureOrderCreateProfile) {
+        $profilePath = Join-Path $rawDir "$name-order-create-profile.json"
+        $profileSnapshot = Save-OrderCreateProfile $profilePath
+    }
     $cleanup = $null
     if ($WriteWorkload) { $cleanup = Invoke-Reset $measurementEndedAt }
 
@@ -171,6 +207,8 @@ try {
         log = $logPath
         metrics = $metricsSummaryPath
         metricsSummary = $metricsSummary
+        orderCreateProfile = $profilePath
+        orderCreateProfileSnapshot = $profileSnapshot
         cleanup = $cleanup
     } | ConvertTo-Json -Compress
 } finally {

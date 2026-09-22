@@ -48,6 +48,7 @@ class BusinessMetricsTest {
         metrics.stopPayment(metrics.startTimer(), true);
         metrics.stopRefund(metrics.startTimer(), true);
         metrics.stopOutboxPublish(metrics.startTimer(), true);
+        metrics.recordOrderCreateStage("load_session", 1_000_000L);
 
         assertThat(registry.timer("xticket.seat.lock.duration", "outcome", "success").count()).isEqualTo(1);
         assertThat(registry.timer("xticket.seat.lock.duration", "outcome", "failure").count()).isEqualTo(1);
@@ -55,5 +56,12 @@ class BusinessMetricsTest {
         assertThat(registry.timer("xticket.payment.duration", "outcome", "success").count()).isEqualTo(1);
         assertThat(registry.timer("xticket.refund.duration", "outcome", "success").count()).isEqualTo(1);
         assertThat(registry.timer("xticket.outbox.publish.duration", "outcome", "success").count()).isEqualTo(1);
+        assertThat(registry.timer("xticket.order.create.stage.duration", "stage", "load_session").count()).isEqualTo(1);
+        assertThat(metrics.orderCreateStageSnapshots().get("load_session"))
+                .satisfies(snapshot -> {
+                    assertThat(snapshot.count()).isEqualTo(1);
+                    assertThat(snapshot.meanMs()).isGreaterThan(0);
+                    assertThat(snapshot.p95Ms()).isNotNull();
+                });
     }
 }

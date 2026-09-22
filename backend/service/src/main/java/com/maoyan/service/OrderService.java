@@ -40,6 +40,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -65,14 +68,27 @@ public class OrderService {
         Timer.Sample sample = businessMetrics.startTimer();
         boolean success = false;
         try {
-            if (dto.getSeatCount() == null || dto.getSeatCount() <= 0) {
-                throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "购票数量不合法");
-            }
+            profileOrderCreateStage("request_validation", () -> {
+                if (dto.getSeatCount() == null || dto.getSeatCount() <= 0) {
+                    throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "购票数量不合法");
+                }
+            });
 
             Long scheduleId = dto.getScheduleId();
+            long lockWaitStarted = System.nanoTime();
+            AtomicBoolean lockEntered = new AtomicBoolean(false);
             OrderVO result = lockService.executeWithBoundedLock("seat:" + scheduleId, 3, 12,
-                    () -> createOrderInTransaction(userId, dto));
+                    () -> {
+                        lockEntered.set(true);
+                        businessMetrics.recordOrderCreateStage("redisson_wait",
+                                System.nanoTime() - lockWaitStarted);
+                        return createOrderInTransaction(userId, dto);
+                    });
             if (result == null) {
+                if (!lockEntered.get()) {
+                    businessMetrics.recordOrderCreateStage("redisson_wait",
+                            System.nanoTime() - lockWaitStarted);
+                }
                 throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "系统繁忙，请重试");
             }
             success = true;
@@ -86,7 +102,7 @@ public class OrderService {
         TransactionTemplate template = new TransactionTemplate(transactionManager);
         template.setTimeout(8);
         try {
-            return template.execute(status -> createOrderInScheduleLock(userId, dto));
+            return executeProfiledTransaction(template, userId, dto);
         } catch (DuplicateKeyException e) {
             String lockToken = normalize(dto.getLockToken());
             if (lockToken == null) {
@@ -106,54 +122,66 @@ public class OrderService {
         int seatCount = dto.getSeatCount();
         LocalDateTime now = LocalDateTime.now();
 
-        ActivitySessionPO schedule = activitySessionMapper.selectById(scheduleId);
+        ActivitySessionPO schedule = profileOrderCreateStage("load_session",
+                () -> activitySessionMapper.selectById(scheduleId));
         if (schedule == null || schedule.getDeleted() == 1 || schedule.getStatus() != 1) {
             throw new BizException(ResponseCodeEnum.NOT_FOUND.getCode(), "场次不存在或已停售");
         }
 
-        seatLockMapper.cleanExpiredLocks(now);
+        profileOrderCreateStage("cleanup_expired_locks", () -> seatLockMapper.cleanExpiredLocks(now));
 
         String lockToken = normalize(dto.getLockToken());
         if (lockToken == null) {
-            lockToken = lockSeatsForOrder(userId, schedule, dto, now);
+            lockToken = profileOrderCreateStage("create_missing_lock",
+                    () -> lockSeatsForOrder(userId, schedule, dto, now));
         }
 
         Set<String> requestedSeats = normalizeRequestSeats(dto, seatCount);
-        OrderPO existingOrder = orderMapper.selectByLockToken(lockToken);
+        String effectiveLockToken = lockToken;
+        OrderPO existingOrder = profileOrderCreateStage("idempotency_check",
+                () -> orderMapper.selectByLockToken(effectiveLockToken));
         if (existingOrder != null) {
             return handleConsumedLockToken(userId, dto, lockToken, requestedSeats, existingOrder);
         }
 
-        List<SeatLockPO> lockedSeats = seatLockMapper.selectActiveLocksByTokenOnly(lockToken, now);
-        validateUsableLockToken(userId, scheduleId, lockToken, requestedSeats, lockedSeats, seatCount);
+        List<SeatLockPO> lockedSeats = profileOrderCreateStage("verify_locks", () -> {
+            List<SeatLockPO> locks = seatLockMapper.selectActiveLocksByTokenOnly(effectiveLockToken, now);
+            validateUsableLockToken(userId, scheduleId, effectiveLockToken, requestedSeats, locks, seatCount);
+            return locks;
+        });
 
-        OrderSnapshotSourceDTO snapshot = loadOrderSnapshotSource(scheduleId);
+        OrderSnapshotSourceDTO snapshot = profileOrderCreateStage("load_snapshot",
+                () -> loadOrderSnapshotSource(scheduleId));
         String seatsInfo = formatSeatsInfo(lockedSeats);
 
-        long remaining = stockService.preDeduct(scheduleId, seatCount);
+        long remaining = profileOrderCreateStage("redis_stock",
+                () -> stockService.preDeduct(scheduleId, seatCount));
         if (remaining < 0) {
             throw new BizException(ResponseCodeEnum.STOCK_NOT_ENOUGH);
         }
 
         try {
-            int affected = activitySessionMapper.deductStock(scheduleId, seatCount, snapshot.getVersion());
+            int affected = profileOrderCreateStage("db_stock_update",
+                    () -> activitySessionMapper.deductStock(scheduleId, seatCount, snapshot.getVersion()));
             if (affected == 0) {
                 throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "库存扣减失败，请重新下单");
             }
 
             String orderNo = generateOrderNo(userId);
             OrderPO order = buildPendingOrder(userId, snapshot, lockToken, orderNo, now, seatCount, seatsInfo);
-            orderMapper.insert(order);
+            profileOrderCreateStage("order_insert", () -> orderMapper.insert(order));
 
-            int bound = seatLockMapper.bindLocksToOrder(scheduleId, userId, lockToken, orderNo,
-                    order.getExpireTime(), now);
+            int bound = profileOrderCreateStage("bind_locks",
+                    () -> seatLockMapper.bindLocksToOrder(scheduleId, userId, effectiveLockToken, orderNo,
+                            order.getExpireTime(), now));
             if (bound != seatCount) {
                 throw new BizException(ResponseCodeEnum.CONFLICT.getCode(), "锁座绑定数量不匹配，请重新选座");
             }
 
-            refreshScheduleDetailCache(scheduleId);
-            orderEventOutboxService.append(OrderEvent.Type.CREATED, order);
-            OrderVO result = toVO(order);
+            profileOrderCreateStage("refresh_cache", () -> refreshScheduleDetailCache(scheduleId));
+            profileOrderCreateStage("outbox_insert",
+                    () -> orderEventOutboxService.append(OrderEvent.Type.CREATED, order));
+            OrderVO result = profileOrderCreateStage("response_mapping", () -> toVO(order));
             businessMetrics.orderCreated();
             log.info("[Order] Created: orderNo={}, userId={}, scheduleId={}, seats={}, total={}",
                     orderNo, userId, scheduleId, seatCount, order.getTotalPrice());
@@ -395,6 +423,24 @@ public class OrderService {
         }
     }
 
+    private OrderVO executeProfiledTransaction(TransactionTemplate template, Long userId, CreateOrderDTO dto) {
+        long transactionStarted = System.nanoTime();
+        AtomicLong callbackNanos = new AtomicLong();
+        try {
+            return template.execute(status -> {
+                long callbackStarted = System.nanoTime();
+                try {
+                    return createOrderInScheduleLock(userId, dto);
+                } finally {
+                    callbackNanos.set(System.nanoTime() - callbackStarted);
+                }
+            });
+        } finally {
+            long completionNanos = System.nanoTime() - transactionStarted - callbackNanos.get();
+            businessMetrics.recordOrderCreateStage("tx_completion", completionNanos);
+        }
+    }
+
     public List<OrderVO> getUserOrders(Long userId, int page, int size) {
         int offset = (page - 1) * size;
         return orderMapper.selectByUserIdWithPage(userId, offset, size).stream()
@@ -460,5 +506,21 @@ public class OrderService {
             return "***";
         }
         return lockToken.substring(0, 6) + "..." + lockToken.substring(lockToken.length() - 4);
+    }
+
+    private <T> T profileOrderCreateStage(String stage, Supplier<T> action) {
+        long started = System.nanoTime();
+        try {
+            return action.get();
+        } finally {
+            businessMetrics.recordOrderCreateStage(stage, System.nanoTime() - started);
+        }
+    }
+
+    private void profileOrderCreateStage(String stage, Runnable action) {
+        profileOrderCreateStage(stage, () -> {
+            action.run();
+            return null;
+        });
     }
 }

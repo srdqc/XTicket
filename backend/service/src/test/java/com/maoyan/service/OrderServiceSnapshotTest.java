@@ -39,6 +39,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -167,6 +168,33 @@ class OrderServiceSnapshotTest {
         verify(stockService, never()).preDeduct(anyLong(), anyInt());
         verify(orderMapper, never()).insert(any(OrderPO.class));
         verify(businessMetrics, never()).orderCreated();
+    }
+
+    @Test
+    void outboxFailureRollsBackTransactionAndCompensatesRedisStock() {
+        CreateOrderDTO dto = orderRequest("lock-token-rollback", List.of(seat(4, 6)), "client text");
+        when(activitySessionMapper.selectById(40L)).thenReturn(activeSchedule());
+        when(orderMapper.selectByLockToken("lock-token-rollback")).thenReturn(null);
+        when(seatLockMapper.selectActiveLocksByTokenOnly(eq("lock-token-rollback"), any()))
+                .thenReturn(List.of(lock(4, 6)));
+        when(activitySessionMapper.selectOrderSnapshotSource(40L)).thenReturn(snapshot());
+        when(stockService.preDeduct(40L, 1)).thenReturn(219L);
+        when(activitySessionMapper.deductStock(40L, 1, 7)).thenReturn(1);
+        when(orderMapper.insert(any(OrderPO.class))).thenReturn(1);
+        when(seatLockMapper.bindLocksToOrder(eq(40L), eq(1001L), eq("lock-token-rollback"),
+                anyString(), any(LocalDateTime.class), any(LocalDateTime.class))).thenReturn(1);
+        doThrow(new IllegalStateException("injected outbox failure"))
+                .when(orderEventOutboxService).append(eq(com.maoyan.domain.model.event.OrderEvent.Type.CREATED),
+                        any(OrderPO.class));
+
+        assertThatThrownBy(() -> orderService.createOrder(1001L, dto))
+                .isInstanceOf(BizException.class)
+                .extracting(ex -> ((BizException) ex).getCode())
+                .isEqualTo(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode());
+
+        verify(transactionManager).rollback(any());
+        verify(stockService).rollback(40L, 1);
+        verify(orderMapper).insert(any(OrderPO.class));
     }
 
     private static CreateOrderDTO orderRequest(String lockToken, List<LockSeatsDTO.SeatPos> seats, String seatsInfo) {
