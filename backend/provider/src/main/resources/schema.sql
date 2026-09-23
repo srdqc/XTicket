@@ -323,6 +323,7 @@ CREATE INDEX IF NOT EXISTS idx_seat_lock_schedule ON seat_lock(schedule_id, stat
 CREATE UNIQUE INDEX IF NOT EXISTS idx_seat_lock_unique ON seat_lock(schedule_id, row_num, col_num);
 CREATE INDEX IF NOT EXISTS idx_seat_lock_user ON seat_lock(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_seat_lock_token ON seat_lock(lock_token);
+CREATE INDEX IF NOT EXISTS idx_seat_lock_order ON seat_lock(order_no);
 CREATE INDEX IF NOT EXISTS idx_seat_lock_expire ON seat_lock(lock_until, status);
 CREATE INDEX IF NOT EXISTS idx_order_seat_order ON order_seat(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_seat_schedule ON order_seat(schedule_id);
