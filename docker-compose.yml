@@ -113,6 +113,7 @@ services:
     restart: unless-stopped
     environment:
       MAOYAN_PROFILING_ORDER_CREATE_ENABLED: ${MAOYAN_PROFILING_ORDER_CREATE_ENABLED:-false}
+      MAOYAN_PROFILING_PAYMENT_ENABLED: ${MAOYAN_PROFILING_PAYMENT_ENABLED:-false}
       SPRING_PROFILES_ACTIVE: docker
       TZ: Asia/Shanghai
       MYSQL_HOST: mysql

@@ -5,7 +5,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,metrics,ordercreateprofile
+        include: health,metrics,ordercreateprofile,paymentprofile
   endpoint:
     health:
       show-details: never

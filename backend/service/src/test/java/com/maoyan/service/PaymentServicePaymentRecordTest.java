@@ -118,6 +118,14 @@ class PaymentServicePaymentRecordTest {
         writes.verify(paymentRecordMapper).insert(any(PaymentRecordPO.class));
         writes.verify(ticketService).issueTickets("MO_PAY_001");
         verify(businessMetrics).paymentSuccess();
+        verify(businessMetrics).recordPaymentStage(eq("payment_idempotency"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_order_load"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_points_debit"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_order_transition"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_order_seat"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_record_write"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_ticket_issue"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_outbox_insert"), anyLong());
     }
 
     @Test

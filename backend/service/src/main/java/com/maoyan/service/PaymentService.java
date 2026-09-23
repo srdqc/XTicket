@@ -25,6 +25,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.RoundingMode;
 import java.sql.SQLException;
@@ -32,6 +34,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Service
@@ -57,11 +60,17 @@ public class PaymentService {
     @Transactional(rollbackFor = Exception.class, timeout = 8)
     public OrderVO payOrder(Long userId, String orderNo) {
         Timer.Sample sample = businessMetrics.startTimer();
+        long idempotencyStarted = System.nanoTime();
+        AtomicBoolean idempotencyRecorded = new AtomicBoolean();
         boolean success = false;
         try {
             OrderVO result = lockService.executeWithBoundedLock("pay:" + orderNo, 3, 12,
-                    () -> payOrderInLock(userId, orderNo));
+                    () -> {
+                        recordIdempotencyOnce(idempotencyStarted, idempotencyRecorded);
+                        return payOrderInLock(userId, orderNo);
+                    });
             if (result == null) {
+                recordIdempotencyOnce(idempotencyStarted, idempotencyRecorded);
                 throw new BizException(ResponseCodeEnum.ORDER_CREATE_FAILED.getCode(), "支付处理中，请稍后重试");
             }
             success = true;
@@ -78,7 +87,13 @@ public class PaymentService {
     }
 
     private OrderVO payOrderInLock(Long userId, String orderNo) {
-        OrderPO order = selectUserOrder(userId, orderNo);
+        long stageStarted = System.nanoTime();
+        OrderPO order;
+        try {
+            order = selectUserOrder(userId, orderNo);
+        } finally {
+            recordStage("payment_order_load", stageStarted);
+        }
         if (order == null) {
             throw new BizException(ResponseCodeEnum.NOT_FOUND.getCode(), "订单不存在");
         }
@@ -101,42 +116,108 @@ public class PaymentService {
             throw new BizException(ResponseCodeEnum.SEAT_LOCK_EXPIRED);
         }
 
-        List<SeatLockPO> locks = seatLockMapper.selectLocksByOrderNo(orderNo);
+        stageStarted = System.nanoTime();
+        List<SeatLockPO> locks;
+        try {
+            locks = seatLockMapper.selectLocksByOrderNo(orderNo);
+        } finally {
+            recordStage("payment_seat_lock_load", stageStarted);
+        }
         if (locks.size() != order.getSeatCount() || locks.stream().anyMatch(l -> l.getStatus() != 1)) {
             throw new BizException(ResponseCodeEnum.SEAT_LOCK_EXPIRED);
         }
 
         int pointsCost = order.getTotalPrice().setScale(0, RoundingMode.UP).intValue();
-        UserPO user = userMapper.selectById(userId);
-        if (user == null || user.getPoints() == null || user.getPoints() < pointsCost) {
-            throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(),
-                    "积分不足，需要" + pointsCost + "积分，当前" + (user != null ? user.getPoints() : 0) + "积分");
-        }
-        int pointAffected = userMapper.deductPoints(userId, pointsCost);
-        if (pointAffected == 0) {
-            throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "积分扣减失败，请重试");
+        stageStarted = System.nanoTime();
+        try {
+            UserPO user = userMapper.selectById(userId);
+            if (user == null || user.getPoints() == null || user.getPoints() < pointsCost) {
+                throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(),
+                        "积分不足，需要" + pointsCost + "积分，当前" + (user != null ? user.getPoints() : 0) + "积分");
+            }
+            int pointAffected = userMapper.deductPoints(userId, pointsCost);
+            if (pointAffected == 0) {
+                throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "积分扣减失败，请重试");
+            }
+        } finally {
+            recordStage("payment_points_debit", stageStarted);
         }
 
-        int paid = orderMapper.markOrderPaid(orderNo, now);
+        stageStarted = System.nanoTime();
+        int paid;
+        try {
+            paid = orderMapper.markOrderPaid(orderNo, now);
+        } finally {
+            recordStage("payment_order_transition", stageStarted);
+        }
         if (paid == 0) {
             throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "订单状态已变化，请刷新后重试");
         }
 
-        confirmOrderSeats(order, locks, now);
-        seatLockMapper.markAsPurchased(orderNo, now);
-        insertPaymentRecord(order, now);
-        ticketService.issueTickets(orderNo);
+        stageStarted = System.nanoTime();
+        try {
+            confirmOrderSeats(order, locks, now);
+            seatLockMapper.markAsPurchased(orderNo, now);
+        } finally {
+            recordStage("payment_order_seat", stageStarted);
+        }
+        stageStarted = System.nanoTime();
+        try {
+            insertPaymentRecord(order, now);
+        } finally {
+            recordStage("payment_record_write", stageStarted);
+        }
+        stageStarted = System.nanoTime();
+        try {
+            ticketService.issueTickets(orderNo);
+        } finally {
+            recordStage("payment_ticket_issue", stageStarted);
+        }
 
         order.setStatus(OrderStatusEnum.PAID.getCode());
         order.setPayTime(now);
-        orderEventOutboxService.append(OrderEvent.Type.PAID, order);
+        stageStarted = System.nanoTime();
+        try {
+            orderEventOutboxService.append(OrderEvent.Type.PAID, order);
+        } finally {
+            recordStage("payment_outbox_insert", stageStarted);
+        }
 
         log.info("[Payment] Order paid: orderNo={}, total={}", orderNo, order.getTotalPrice());
-        OrderVO vo = toVO(order);
-        UserPO updatedUser = userMapper.selectById(userId);
-        vo.setRemainingPoints(updatedUser != null ? updatedUser.getPoints() : 0);
+        stageStarted = System.nanoTime();
+        OrderVO vo;
+        try {
+            vo = toVO(order);
+            UserPO updatedUser = userMapper.selectById(userId);
+            vo.setRemainingPoints(updatedUser != null ? updatedUser.getPoints() : 0);
+        } finally {
+            recordStage("payment_response_mapping", stageStarted);
+        }
+        registerTransactionCompletion(System.nanoTime());
         businessMetrics.paymentSuccess();
         return vo;
+    }
+
+    private void recordIdempotencyOnce(long started, AtomicBoolean recorded) {
+        if (recorded.compareAndSet(false, true)) {
+            businessMetrics.recordPaymentStage("payment_idempotency", System.nanoTime() - started);
+        }
+    }
+
+    private void recordStage(String stage, long started) {
+        businessMetrics.recordPaymentStage(stage, System.nanoTime() - started);
+    }
+
+    private void registerTransactionCompletion(long started) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                businessMetrics.recordPaymentStage("payment_tx_completion", System.nanoTime() - started);
+            }
+        });
     }
 
     private String paymentFailureReason(int code) {

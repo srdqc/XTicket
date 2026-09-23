@@ -35,6 +35,7 @@ public class BusinessMetrics {
     private final DistributionSummary outboxSelectedCount;
     private final DistributionSummary outboxPublishedPerBatch;
     private final Map<String, Timer> orderCreateStageTimers;
+    private final Map<String, Timer> paymentStageTimers;
 
     private static final String[] ORDER_CREATE_STAGES = {
             "request_validation", "redisson_wait", "load_session", "cleanup_expired_locks",
@@ -42,6 +43,13 @@ public class BusinessMetrics {
             "redis_stock", "pre_stock", "db_stock_update", "post_stock_to_tx_end",
             "order_insert", "bind_locks", "refresh_cache",
             "outbox_insert", "response_mapping", "tx_completion", "response_enrichment"
+    };
+
+    private static final String[] PAYMENT_STAGES = {
+            "payment_idempotency", "payment_order_load", "payment_seat_lock_load",
+            "payment_points_debit", "payment_order_transition", "payment_order_seat",
+            "payment_record_write", "payment_ticket_issue", "payment_outbox_insert",
+            "payment_response_mapping", "payment_tx_completion"
     };
 
     public BusinessMetrics(MeterRegistry registry) {
@@ -70,6 +78,14 @@ public class BusinessMetrics {
                     .register(registry));
         }
         orderCreateStageTimers = Map.copyOf(stageTimers);
+        Map<String, Timer> paymentTimers = new LinkedHashMap<>();
+        for (String stage : PAYMENT_STAGES) {
+            paymentTimers.put(stage, Timer.builder("xticket.payment.stage.duration")
+                    .tag("stage", stage)
+                    .publishPercentiles(0.5, 0.95, 0.99)
+                    .register(registry));
+        }
+        paymentStageTimers = Map.copyOf(paymentTimers);
     }
 
     public Timer.Sample startTimer() {
@@ -118,6 +134,31 @@ public class BusinessMetrics {
         Map<String, OrderCreateStageSnapshot> snapshots = new LinkedHashMap<>();
         for (String stage : ORDER_CREATE_STAGES) {
             Timer timer = orderCreateStageTimers.get(stage);
+            HistogramSnapshot snapshot = timer.takeSnapshot();
+            snapshots.put(stage, new OrderCreateStageSnapshot(
+                    snapshot.count(),
+                    snapshot.mean(TimeUnit.MILLISECONDS),
+                    percentileMillis(snapshot, 0.5),
+                    percentileMillis(snapshot, 0.95),
+                    percentileMillis(snapshot, 0.99),
+                    snapshot.max(TimeUnit.MILLISECONDS)));
+        }
+        return snapshots;
+    }
+
+    public void recordPaymentStage(String stage, long durationNanos) {
+        Timer timer = paymentStageTimers.get(stage);
+        if (timer == null) {
+            log.warn("[Metrics] Ignored unknown payment stage: {}", stage);
+            return;
+        }
+        record(timer, durationNanos);
+    }
+
+    public Map<String, OrderCreateStageSnapshot> paymentStageSnapshots() {
+        Map<String, OrderCreateStageSnapshot> snapshots = new LinkedHashMap<>();
+        for (String stage : PAYMENT_STAGES) {
+            Timer timer = paymentStageTimers.get(stage);
             HistogramSnapshot snapshot = timer.takeSnapshot();
             snapshots.put(stage, new OrderCreateStageSnapshot(
                     snapshot.count(),

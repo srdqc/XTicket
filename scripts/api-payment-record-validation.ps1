@@ -116,6 +116,14 @@ function PaymentCount([string]$orderNo) {
     return [int](DbScalar "SELECT COUNT(*) FROM payment_record WHERE order_no = '$orderNo' AND deleted = 0")
 }
 
+function TicketCount([string]$orderNo) {
+    return [int](DbScalar "SELECT COUNT(*) FROM electronic_ticket WHERE order_no = '$orderNo' AND deleted = 0")
+}
+
+function PaidEventCount([string]$orderNo) {
+    return [int](DbScalar "SELECT COUNT(*) FROM outbox_event WHERE aggregate_id = '$orderNo' AND event_type = 'PAID'")
+}
+
 function PaymentRow([string]$orderNo) {
     $rows = @(DbRows "SELECT payment_no, order_no, user_id, amount, channel, status, paid_at FROM payment_record WHERE order_no = '$orderNo' AND deleted = 0")
     if ($rows.Count -eq 0) { return $null }
@@ -155,15 +163,14 @@ $u3 = NewUser "concurrent"
 $o3 = CreatePending $u3 $scheduleId
 $p3Before = UserPoints $u3.id
 $jobScript = { param($url,$orderNo,$token) try { Invoke-RestMethod -Method POST -Uri "$url/api/payment/pay?orderNo=$orderNo" -Headers @{Authorization="Bearer $token"} } catch { if ($_.ErrorDetails.Message) { $_.ErrorDetails.Message | ConvertFrom-Json } else { throw } } }
-$jobs = @(
+$jobs = @(1..8 | ForEach-Object {
     Start-Job -ScriptBlock $jobScript -ArgumentList $BackendUrl,$o3.orderNo,$u3.token
-    Start-Job -ScriptBlock $jobScript -ArgumentList $BackendUrl,$o3.orderNo,$u3.token
-)
+})
 Wait-Job $jobs | Out-Null
 $cr = @($jobs | Receive-Job)
 Remove-Job $jobs
-AddResult "concurrentPay" ($(if ((@($cr | Where-Object { $_.code -eq 200 }).Count) -eq 1 -and (PaymentCount $o3.orderNo) -eq 1 -and (OrderSeatCount $o3.orderNo) -eq 1 -and ((UserPoints $u3.id) -eq ($p3Before - [int][Math]::Ceiling([double](OrderTotal $o3.orderNo))))) { "PASS" } else { "FAIL" })) @{
-    orderNo=$o3.orderNo; responses=@($cr | ForEach-Object { "$($_.code):$($_.message)" }); paymentCount=(PaymentCount $o3.orderNo); pointsBefore=$p3Before; pointsAfter=(UserPoints $u3.id)
+AddResult "concurrentPay8Way" ($(if ((@($cr | Where-Object { $_.code -eq 200 }).Count) -eq 1 -and (PaymentCount $o3.orderNo) -eq 1 -and (OrderSeatCount $o3.orderNo) -eq 1 -and (TicketCount $o3.orderNo) -eq 1 -and (PaidEventCount $o3.orderNo) -eq 1 -and ((UserPoints $u3.id) -eq ($p3Before - [int][Math]::Ceiling([double](OrderTotal $o3.orderNo))))) { "PASS" } else { "FAIL" })) @{
+    orderNo=$o3.orderNo; responses=@($cr | ForEach-Object { "$($_.code):$($_.message)" }); paymentCount=(PaymentCount $o3.orderNo); ticketCount=(TicketCount $o3.orderNo); paidEventCount=(PaidEventCount $o3.orderNo); pointsBefore=$p3Before; pointsAfter=(UserPoints $u3.id)
 }
 
 $u4 = NewUser "conflict"

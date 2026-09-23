@@ -66,6 +66,9 @@ class BusinessMetricsTest {
         metrics.recordOrderCreateStage("load_session", 1_000_000L);
         metrics.recordOrderCreateStage("pre_stock", 2_000_000L);
         metrics.recordOrderCreateStage("post_stock_to_tx_end", 3_000_000L);
+        metrics.recordPaymentStage("payment_order_load", 1_000_000L);
+        metrics.recordPaymentStage("payment_ticket_issue", 2_000_000L);
+        metrics.recordPaymentStage("payment_tx_completion", 3_000_000L);
 
         assertThat(registry.timer("xticket.seat.lock.duration", "outcome", "success").count()).isEqualTo(1);
         assertThat(registry.timer("xticket.seat.lock.duration", "outcome", "failure").count()).isEqualTo(1);
@@ -82,5 +85,8 @@ class BusinessMetricsTest {
                 });
         assertThat(metrics.orderCreateStageSnapshots().get("pre_stock").count()).isEqualTo(1);
         assertThat(metrics.orderCreateStageSnapshots().get("post_stock_to_tx_end").count()).isEqualTo(1);
+        assertThat(metrics.paymentStageSnapshots().get("payment_order_load").count()).isEqualTo(1);
+        assertThat(metrics.paymentStageSnapshots().get("payment_ticket_issue").p95Ms()).isNotNull();
+        assertThat(metrics.paymentStageSnapshots().get("payment_tx_completion").count()).isEqualTo(1);
     }
 }
