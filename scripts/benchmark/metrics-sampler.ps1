@@ -43,7 +43,8 @@ function Get-Snapshot {
         'hikaricp.connections.pending',
         'xticket.outbox.pending',
         'xticket.outbox.processing',
-        'xticket.outbox.failed'
+        'xticket.outbox.failed',
+        'xticket.outbox.publish.success'
     )
     $parts = @($metricUrls | ForEach-Object {
         "wget -qO- 'http://127.0.0.1:8080/actuator/metrics/$_'; printf '\n'"
@@ -69,6 +70,7 @@ function Get-Snapshot {
         outboxPending = Get-Measurement $metrics[7] 'VALUE'
         outboxProcessing = Get-Measurement $metrics[8] 'VALUE'
         outboxFailed = Get-Measurement $metrics[9] 'VALUE'
+        outboxPublishedCount = Get-Measurement $metrics[10] 'COUNT'
     }
 }
 
@@ -93,6 +95,8 @@ try {
     $cpuValues = [double[]]@($samples | ForEach-Object { $_.processCpuPercent })
     $first = $samples[0]
     $last = $samples[$samples.Count - 1]
+    $sampledSeconds = ([DateTimeOffset]::Parse($last.timestampUtc) - [DateTimeOffset]::Parse($first.timestampUtc)).TotalSeconds
+    $publishedDelta = [long]($last.outboxPublishedCount - $first.outboxPublishedCount)
     $summary = [pscustomobject]@{
         status = 'SAMPLER_OK'
         intervalSeconds = $IntervalSeconds
@@ -109,6 +113,10 @@ try {
         outboxPendingPeak = [long](($samples.outboxPending | Measure-Object -Maximum).Maximum)
         outboxProcessingPeak = [long](($samples.outboxProcessing | Measure-Object -Maximum).Maximum)
         outboxFailedPeak = [long](($samples.outboxFailed | Measure-Object -Maximum).Maximum)
+        outboxPublishedDelta = $publishedDelta
+        outboxPublishedPerSecond = if ($sampledSeconds -gt 0) {
+            [Math]::Round($publishedDelta / $sampledSeconds, 3)
+        } else { 0 }
     }
     [IO.File]::WriteAllText($SummaryPath, ($summary | ConvertTo-Json -Compress), $utf8NoBom)
     $summary | ConvertTo-Json -Compress
