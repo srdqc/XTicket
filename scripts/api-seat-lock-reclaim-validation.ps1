@@ -6,7 +6,8 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $benchmark = Join-Path $PSScriptRoot 'benchmark'
 $tokensPath = Join-Path $benchmark 'results\raw\tokens.json'
 if (-not (Test-Path -LiteralPath $tokensPath)) { throw 'Run benchmark prepare.ps1 first' }
-$users = @(Get-Content -Raw -LiteralPath $tokensPath | ConvertFrom-Json)
+$parsedUsers = Get-Content -Raw -LiteralPath $tokensPath | ConvertFrom-Json
+$users = @($parsedUsers)
 if ($users.Count -lt 25) { throw 'At least 25 benchmark users are required' }
 
 function Invoke-Api($User, $Body) {
@@ -24,7 +25,7 @@ function Invoke-ConcurrentLocks([int]$Count, [long]$SessionId) {
     $startAt = [DateTime]::UtcNow.AddSeconds(2)
     $jobs = @()
     foreach ($i in 0..($Count - 1)) {
-        $row = [math]::Floor($i / 12) + 1
+        $row = [math]::Floor($i / 12) + 90
         $col = ($i % 12) + 1
         $body = @{ scheduleId = $SessionId; seats = @(@{ row = $row; col = $col }) } | ConvertTo-Json -Depth 6 -Compress
         $jobs += Start-Job -ScriptBlock {
@@ -68,16 +69,23 @@ Push-Location $root
 try {
     $session = 910001L
     Reset-Fixture
-    $missing = Invoke-Api $users[0] @{ scheduleId = $session; seats = @(Seat 1 1) }
+    $singleRow = 100
+    $singleCol = 200
+    while ((Db-Scalar "SELECT (SELECT COUNT(*) FROM seat_lock WHERE schedule_id=$session AND row_num=$singleRow AND col_num=$singleCol) + (SELECT COUNT(*) FROM order_seat WHERE schedule_id=$session AND row_num=$singleRow AND col_num=$singleCol)") -ne '0') {
+        $singleCol--
+        if ($singleCol -lt 1) { $singleRow--; $singleCol = 200 }
+        if ($singleRow -lt 1) { throw 'No free benchmark seat for reclaim validation' }
+    }
+    $missing = Invoke-Api $users[0] @{ scheduleId = $session; seats = @(Seat $singleRow $singleCol) }
     Assert-True ($missing.code -eq 200) 'missing seat insert failed'
-    $rowId = Db-Scalar "SELECT id FROM seat_lock WHERE schedule_id=$session AND row_num=1 AND col_num=1"
-    $active = Invoke-Api $users[1] @{ scheduleId = $session; seats = @(Seat 1 1) }
+    $rowId = Db-Scalar "SELECT id FROM seat_lock WHERE schedule_id=$session AND row_num=$singleRow AND col_num=$singleCol"
+    $active = Invoke-Api $users[1] @{ scheduleId = $session; seats = @(Seat $singleRow $singleCol) }
     Assert-True ($active.code -ne 200 -and (Db-Scalar "SELECT COUNT(*) FROM seat_lock WHERE id=$rowId") -eq '1') 'active seat was reclaimed'
     [void](Db-Scalar "UPDATE seat_lock SET lock_until=DATE_SUB(NOW(), INTERVAL 1 MINUTE) WHERE id=$rowId; SELECT ROW_COUNT()")
-    $reclaimed = Invoke-Api $users[1] @{ scheduleId = $session; seats = @(Seat 1 1) }
-    Assert-True ($reclaimed.code -eq 200 -and (Db-Scalar "SELECT id FROM seat_lock WHERE schedule_id=$session AND row_num=1 AND col_num=1") -eq $rowId -and (Db-Scalar "SELECT COUNT(*) FROM seat_lock WHERE schedule_id=$session AND row_num=1 AND col_num=1") -eq '1') 'expired seat was not reclaimed in place'
+    $reclaimed = Invoke-Api $users[1] @{ scheduleId = $session; seats = @(Seat $singleRow $singleCol) }
+    Assert-True ($reclaimed.code -eq 200 -and (Db-Scalar "SELECT id FROM seat_lock WHERE schedule_id=$session AND row_num=$singleRow AND col_num=$singleCol") -eq $rowId -and (Db-Scalar "SELECT COUNT(*) FROM seat_lock WHERE schedule_id=$session AND row_num=$singleRow AND col_num=$singleCol") -eq '1') 'expired seat was not reclaimed in place'
     [void](Db-Scalar "UPDATE seat_lock SET order_no='BOUND-TEST', lock_until=DATE_SUB(NOW(), INTERVAL 1 MINUTE) WHERE id=$rowId; SELECT ROW_COUNT()")
-    $bound = Invoke-Api $users[2] @{ scheduleId = $session; seats = @(Seat 1 1) }
+    $bound = Invoke-Api $users[2] @{ scheduleId = $session; seats = @(Seat $singleRow $singleCol) }
     Assert-True ($bound.code -ne 200 -and (Db-Scalar "SELECT order_no FROM seat_lock WHERE id=$rowId") -eq 'BOUND-TEST') 'bound seat was reclaimed'
     $results.singleState = 'PASS'
 

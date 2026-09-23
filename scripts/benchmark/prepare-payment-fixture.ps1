@@ -13,7 +13,8 @@ $rawDir = Join-Path $PSScriptRoot 'results\raw'
 $tokenPath = if ([string]::IsNullOrWhiteSpace($TokenFile)) {
     Join-Path $rawDir 'tokens.json'
 } else { (Resolve-Path $TokenFile).Path }
-$tokens = @(Get-Content -Raw -LiteralPath $tokenPath | ConvertFrom-Json)
+$parsedTokens = Get-Content -Raw -LiteralPath $tokenPath | ConvertFrom-Json
+$tokens = @($parsedTokens)
 if ($tokens.Count -lt 1) { throw 'No benchmark tokens available' }
 $utf8NoBom = New-Object Text.UTF8Encoding($false)
 $orders = @()
