@@ -48,6 +48,7 @@ public class BusinessMetrics {
     private static final String[] PAYMENT_STAGES = {
             "payment_idempotency", "payment_order_load", "payment_seat_lock_load",
             "payment_points_debit", "payment_order_transition", "payment_order_seat",
+            "payment_order_seat_total", "payment_order_seat_insert", "payment_seat_lock_update",
             "payment_record_write", "payment_ticket_issue", "payment_outbox_insert",
             "payment_response_mapping", "payment_tx_completion"
     };

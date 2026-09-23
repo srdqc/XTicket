@@ -154,12 +154,21 @@ public class PaymentService {
             throw new BizException(ResponseCodeEnum.BAD_REQUEST.getCode(), "订单状态已变化，请刷新后重试");
         }
 
+        long orderSeatTotalStarted = System.nanoTime();
         stageStarted = System.nanoTime();
         try {
             confirmOrderSeats(order, locks, now);
+        } finally {
+            recordStage("payment_order_seat_insert", stageStarted);
+        }
+        stageStarted = System.nanoTime();
+        try {
             seatLockMapper.markAsPurchased(orderNo, now);
         } finally {
-            recordStage("payment_order_seat", stageStarted);
+            recordStage("payment_seat_lock_update", stageStarted);
+            long totalDuration = System.nanoTime() - orderSeatTotalStarted;
+            businessMetrics.recordPaymentStage("payment_order_seat_total", totalDuration);
+            businessMetrics.recordPaymentStage("payment_order_seat", totalDuration);
         }
         stageStarted = System.nanoTime();
         try {

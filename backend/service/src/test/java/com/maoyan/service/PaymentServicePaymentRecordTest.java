@@ -123,6 +123,9 @@ class PaymentServicePaymentRecordTest {
         verify(businessMetrics).recordPaymentStage(eq("payment_points_debit"), anyLong());
         verify(businessMetrics).recordPaymentStage(eq("payment_order_transition"), anyLong());
         verify(businessMetrics).recordPaymentStage(eq("payment_order_seat"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_order_seat_total"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_order_seat_insert"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_seat_lock_update"), anyLong());
         verify(businessMetrics).recordPaymentStage(eq("payment_record_write"), anyLong());
         verify(businessMetrics).recordPaymentStage(eq("payment_ticket_issue"), anyLong());
         verify(businessMetrics).recordPaymentStage(eq("payment_outbox_insert"), anyLong());
