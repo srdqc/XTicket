@@ -67,6 +67,8 @@ mybatis-plus:
 
 # ========== JWT ==========
 maoyan:
+  outbox:
+    publisher-concurrency: ${MAOYAN_OUTBOX_PUBLISHER_CONCURRENCY:2}
   jwt:
     secret: ${JWT_SECRET:change-me-to-a-random-256-bit-jwt-secret-at-least-32-chars}
     expire-hours: 72

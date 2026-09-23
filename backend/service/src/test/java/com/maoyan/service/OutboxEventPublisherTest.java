@@ -17,6 +17,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -46,7 +49,7 @@ class OutboxEventPublisherTest {
             return null;
         }).when(rocketMQTemplate).syncSend(any(), any(OrderEvent.class), eq(1000L));
         OutboxEventPublisher publisher = new OutboxEventPublisher(
-                outboxEventMapper, rocketMQTemplate, objectMapper, businessMetrics);
+                outboxEventMapper, rocketMQTemplate, objectMapper, businessMetrics, 1);
 
         publisher.publishPending();
 
@@ -70,7 +73,7 @@ class OutboxEventPublisherTest {
         when(outboxEventMapper.selectPublishable(any(), any(), eq(50))).thenReturn(List.of(record));
         when(outboxEventMapper.claim(eq(10L), any(), any())).thenReturn(0);
         OutboxEventPublisher publisher = new OutboxEventPublisher(
-                outboxEventMapper, rocketMQTemplate, objectMapper, businessMetrics);
+                outboxEventMapper, rocketMQTemplate, objectMapper, businessMetrics, 1);
 
         publisher.publishPending();
 
@@ -89,7 +92,7 @@ class OutboxEventPublisherTest {
         doThrow(new IllegalStateException("broker unavailable"))
                 .when(rocketMQTemplate).syncSend(any(), any(OrderEvent.class), eq(1000L));
         OutboxEventPublisher publisher = new OutboxEventPublisher(
-                outboxEventMapper, rocketMQTemplate, objectMapper, businessMetrics);
+                outboxEventMapper, rocketMQTemplate, objectMapper, businessMetrics, 1);
 
         publisher.publishPending();
 
@@ -107,7 +110,7 @@ class OutboxEventPublisherTest {
                 .thenReturn(java.util.Collections.nCopies(50, record), List.of());
         when(outboxEventMapper.claim(eq(10L), any(), any())).thenReturn(0);
         OutboxEventPublisher publisher = new OutboxEventPublisher(
-                outboxEventMapper, rocketMQTemplate, objectMapper, businessMetrics);
+                outboxEventMapper, rocketMQTemplate, objectMapper, businessMetrics, 1);
 
         publisher.publishPending();
 
@@ -127,7 +130,7 @@ class OutboxEventPublisherTest {
                 .doReturn(null)
                 .when(rocketMQTemplate).syncSend(any(), any(OrderEvent.class), eq(1000L));
         OutboxEventPublisher publisher = new OutboxEventPublisher(
-                outboxEventMapper, rocketMQTemplate, objectMapper, businessMetrics);
+                outboxEventMapper, rocketMQTemplate, objectMapper, businessMetrics, 1);
 
         publisher.publishPending();
         publisher.publishPending();
@@ -137,12 +140,46 @@ class OutboxEventPublisherTest {
         verify(rocketMQTemplate, times(2)).syncSend(any(), any(OrderEvent.class), eq(1000L));
     }
 
+    @Test
+    void configuredConcurrencyBoundsParallelPublishing() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        List<OutboxEventPO> records = List.of(
+                record(objectMapper, 10L), record(objectMapper, 11L),
+                record(objectMapper, 12L), record(objectMapper, 13L));
+        when(outboxEventMapper.selectPublishable(any(), any(), eq(50))).thenReturn(records);
+        when(outboxEventMapper.claim(anyLong(), any(), any())).thenReturn(1);
+        AtomicInteger active = new AtomicInteger();
+        AtomicInteger peak = new AtomicInteger();
+        CountDownLatch entered = new CountDownLatch(2);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            int current = active.incrementAndGet();
+            peak.accumulateAndGet(current, Math::max);
+            entered.countDown();
+            assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
+            Thread.sleep(20);
+            active.decrementAndGet();
+            return null;
+        }).when(rocketMQTemplate).syncSend(any(), any(OrderEvent.class), eq(1000L));
+        OutboxEventPublisher publisher = new OutboxEventPublisher(
+                outboxEventMapper, rocketMQTemplate, objectMapper, businessMetrics, 2);
+
+        publisher.publishPending();
+
+        assertThat(peak.get()).isEqualTo(2);
+        verify(outboxEventMapper, times(4)).markPublished(anyLong(), any(LocalDateTime.class));
+        publisher.shutdownPublisherExecutor();
+    }
+
     private OutboxEventPO record(ObjectMapper objectMapper) throws Exception {
+        return record(objectMapper, 10L);
+    }
+
+    private OutboxEventPO record(ObjectMapper objectMapper, long id) throws Exception {
         OrderEvent event = OrderEvent.create(OrderEvent.Type.CREATED, "MO-OUTBOX-2",
                 1001L, 40L, 1, new BigDecimal("65.00"));
         event.setTraceId("phase6a-publisher-trace");
         OutboxEventPO record = new OutboxEventPO();
-        record.setId(10L);
+        record.setId(id);
         record.setEventId(event.getEventId());
         record.setAggregateId(event.getOrderNo());
         record.setEventType(event.getType().name());

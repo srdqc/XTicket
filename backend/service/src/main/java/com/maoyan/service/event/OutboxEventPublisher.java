@@ -7,19 +7,26 @@ import com.maoyan.domain.model.event.OrderEvent;
 import com.maoyan.domain.model.po.OutboxEventPO;
 import com.maoyan.service.observability.BusinessMetrics;
 import io.micrometer.core.instrument.Timer;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.annotation.PreDestroy;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 @ConditionalOnProperty(name = "rocketmq.name-server")
 public class OutboxEventPublisher {
 
@@ -31,6 +38,28 @@ public class OutboxEventPublisher {
     private final RocketMQTemplate rocketMQTemplate;
     private final ObjectMapper objectMapper;
     private final BusinessMetrics businessMetrics;
+    private final ExecutorService publisherExecutor;
+
+    public OutboxEventPublisher(OutboxEventMapper outboxEventMapper,
+                                RocketMQTemplate rocketMQTemplate,
+                                ObjectMapper objectMapper,
+                                BusinessMetrics businessMetrics,
+                                @Value("${maoyan.outbox.publisher-concurrency:2}") int publisherConcurrency) {
+        if (publisherConcurrency != 1 && publisherConcurrency != 2 && publisherConcurrency != 4) {
+            throw new IllegalArgumentException("Outbox publisher concurrency must be 1, 2 or 4");
+        }
+        this.outboxEventMapper = outboxEventMapper;
+        this.rocketMQTemplate = rocketMQTemplate;
+        this.objectMapper = objectMapper;
+        this.businessMetrics = businessMetrics;
+        AtomicInteger threadNumber = new AtomicInteger();
+        this.publisherExecutor = Executors.newFixedThreadPool(publisherConcurrency, runnable -> {
+            Thread thread = new Thread(runnable,
+                    "outbox-publisher-" + threadNumber.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
 
     @Scheduled(fixedDelayString = "${maoyan.outbox.publish-interval-ms:1000}")
     public void publishPending() {
@@ -54,21 +83,31 @@ public class OutboxEventPublisher {
             long pollStarted = System.nanoTime();
             List<OutboxEventPO> records = outboxEventMapper.selectPublishable(now, staleBefore, BATCH_SIZE);
             businessMetrics.recordOutboxPoll(System.nanoTime() - pollStarted, records.size());
+            List<Callable<Boolean>> tasks = new ArrayList<>(records.size());
             for (OutboxEventPO record : records) {
-                long claimStarted = System.nanoTime();
-                boolean claimed = outboxEventMapper.claim(record.getId(), now, staleBefore) != 0;
-                businessMetrics.recordOutboxClaim(System.nanoTime() - claimStarted, claimed);
-                if (!claimed) {
-                    continue;
-                }
-                if (publishOne(record)) {
+                tasks.add(() -> claimAndPublish(record, now, staleBefore));
+            }
+            for (Future<Boolean> result : publisherExecutor.invokeAll(tasks)) {
+                if (result.get()) {
                     publishedCount++;
                 }
             }
             return records.size();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Outbox publisher interrupted", e);
+        } catch (ExecutionException e) {
+            throw new IllegalStateException("Outbox publisher worker failed", e.getCause());
         } finally {
             businessMetrics.recordOutboxBatch(System.nanoTime() - batchStarted, publishedCount);
         }
+    }
+
+    private boolean claimAndPublish(OutboxEventPO record, LocalDateTime now, LocalDateTime staleBefore) {
+        long claimStarted = System.nanoTime();
+        boolean claimed = outboxEventMapper.claim(record.getId(), now, staleBefore) != 0;
+        businessMetrics.recordOutboxClaim(System.nanoTime() - claimStarted, claimed);
+        return claimed && publishOne(record);
     }
 
     private boolean publishOne(OutboxEventPO record) {
@@ -107,5 +146,10 @@ public class OutboxEventPublisher {
     private String truncate(String message) {
         String value = message == null ? "unknown error" : message;
         return value.length() <= MAX_ERROR_LENGTH ? value : value.substring(0, MAX_ERROR_LENGTH);
+    }
+
+    @PreDestroy
+    public void shutdownPublisherExecutor() {
+        publisherExecutor.shutdown();
     }
 }
