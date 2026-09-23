@@ -36,29 +36,54 @@ public class OutboxEventPublisher {
     public void publishPending() {
         TraceContext.setOrGenerate(null);
         try {
-            LocalDateTime now = LocalDateTime.now();
-            LocalDateTime staleBefore = now.minusSeconds(PROCESSING_TIMEOUT_SECONDS);
-            List<OutboxEventPO> records = outboxEventMapper.selectPublishable(now, staleBefore, BATCH_SIZE);
-            for (OutboxEventPO record : records) {
-                if (outboxEventMapper.claim(record.getId(), now, staleBefore) == 0) {
-                    continue;
-                }
-                publishOne(record);
-            }
+            int selectedCount;
+            do {
+                selectedCount = publishBatch();
+            } while (selectedCount == BATCH_SIZE);
         } finally {
             TraceContext.clear();
         }
     }
 
-    private void publishOne(OutboxEventPO record) {
+    private int publishBatch() {
+        long batchStarted = System.nanoTime();
+        int publishedCount = 0;
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime staleBefore = now.minusSeconds(PROCESSING_TIMEOUT_SECONDS);
+            long pollStarted = System.nanoTime();
+            List<OutboxEventPO> records = outboxEventMapper.selectPublishable(now, staleBefore, BATCH_SIZE);
+            businessMetrics.recordOutboxPoll(System.nanoTime() - pollStarted, records.size());
+            for (OutboxEventPO record : records) {
+                long claimStarted = System.nanoTime();
+                boolean claimed = outboxEventMapper.claim(record.getId(), now, staleBefore) != 0;
+                businessMetrics.recordOutboxClaim(System.nanoTime() - claimStarted, claimed);
+                if (!claimed) {
+                    continue;
+                }
+                if (publishOne(record)) {
+                    publishedCount++;
+                }
+            }
+            return records.size();
+        } finally {
+            businessMetrics.recordOutboxBatch(System.nanoTime() - batchStarted, publishedCount);
+        }
+    }
+
+    private boolean publishOne(OutboxEventPO record) {
         Timer.Sample sample = businessMetrics.startTimer();
         boolean success = false;
         try (TraceContext.Scope ignored = TraceContext.open(null)) {
             try {
                 OrderEvent event = objectMapper.readValue(record.getPayload(), OrderEvent.class);
                 TraceContext.setOrGenerate(event.getTraceId());
+                long sendStarted = System.nanoTime();
                 rocketMQTemplate.syncSend(record.getTopic() + ":" + record.getTag(), event, 1000);
+                businessMetrics.recordOutboxSend(System.nanoTime() - sendStarted);
+                long markStarted = System.nanoTime();
                 outboxEventMapper.markPublished(record.getId(), LocalDateTime.now());
+                businessMetrics.recordOutboxMarkPublished(System.nanoTime() - markStarted);
                 businessMetrics.outboxPublishSuccess();
                 success = true;
                 log.info("[Outbox] Published: eventId={}, type={}, aggregateId={}",
@@ -76,6 +101,7 @@ public class OutboxEventPublisher {
                 businessMetrics.stopOutboxPublish(sample, success);
             }
         }
+        return success;
     }
 
     private String truncate(String message) {

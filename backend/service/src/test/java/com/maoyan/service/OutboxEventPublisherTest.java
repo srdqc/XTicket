@@ -19,11 +19,13 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,6 +55,11 @@ class OutboxEventPublisherTest {
         verify(outboxEventMapper).markPublished(eq(10L), any(LocalDateTime.class));
         verify(outboxEventMapper, never()).markFailed(any(), any(), any(), any());
         verify(businessMetrics).outboxPublishSuccess();
+        verify(businessMetrics).recordOutboxPoll(anyLong(), eq(1));
+        verify(businessMetrics).recordOutboxClaim(anyLong(), eq(true));
+        verify(businessMetrics).recordOutboxSend(anyLong());
+        verify(businessMetrics).recordOutboxMarkPublished(anyLong());
+        verify(businessMetrics).recordOutboxBatch(anyLong(), eq(1));
         assertThat(TraceContext.currentTraceId()).isNull();
     }
 
@@ -69,6 +76,8 @@ class OutboxEventPublisherTest {
 
         verify(rocketMQTemplate, never()).syncSend(any(), any(OrderEvent.class), eq(1000L));
         verify(outboxEventMapper, never()).markPublished(any(), any());
+        verify(businessMetrics).recordOutboxClaim(anyLong(), eq(false));
+        verify(businessMetrics).recordOutboxBatch(anyLong(), eq(0));
     }
 
     @Test
@@ -86,7 +95,46 @@ class OutboxEventPublisherTest {
 
         verify(outboxEventMapper).markFailed(eq(10L), any(), eq("broker unavailable"), any());
         verify(businessMetrics).outboxPublishFailure();
+        verify(businessMetrics).recordOutboxBatch(anyLong(), eq(0));
         assertThat(TraceContext.currentTraceId()).isNull();
+    }
+
+    @Test
+    void fullBatchImmediatelyPollsAgainAndStopsOnPartialBatch() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        OutboxEventPO record = record(objectMapper);
+        when(outboxEventMapper.selectPublishable(any(), any(), eq(50)))
+                .thenReturn(java.util.Collections.nCopies(50, record), List.of());
+        when(outboxEventMapper.claim(eq(10L), any(), any())).thenReturn(0);
+        OutboxEventPublisher publisher = new OutboxEventPublisher(
+                outboxEventMapper, rocketMQTemplate, objectMapper, businessMetrics);
+
+        publisher.publishPending();
+
+        verify(outboxEventMapper, times(2)).selectPublishable(any(), any(), eq(50));
+        verify(outboxEventMapper, times(50)).claim(eq(10L), any(), any());
+        verify(businessMetrics, times(2)).recordOutboxBatch(anyLong(), eq(0));
+        verify(rocketMQTemplate, never()).syncSend(any(), any(OrderEvent.class), eq(1000L));
+    }
+
+    @Test
+    void failedRecordIsRetriedAndPublishedOnNextEligiblePoll() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        OutboxEventPO record = record(objectMapper);
+        when(outboxEventMapper.selectPublishable(any(), any(), eq(50))).thenReturn(List.of(record));
+        when(outboxEventMapper.claim(eq(10L), any(), any())).thenReturn(1);
+        doThrow(new IllegalStateException("broker unavailable"))
+                .doReturn(null)
+                .when(rocketMQTemplate).syncSend(any(), any(OrderEvent.class), eq(1000L));
+        OutboxEventPublisher publisher = new OutboxEventPublisher(
+                outboxEventMapper, rocketMQTemplate, objectMapper, businessMetrics);
+
+        publisher.publishPending();
+        publisher.publishPending();
+
+        verify(outboxEventMapper).markFailed(eq(10L), any(), eq("broker unavailable"), any());
+        verify(outboxEventMapper).markPublished(eq(10L), any(LocalDateTime.class));
+        verify(rocketMQTemplate, times(2)).syncSend(any(), any(OrderEvent.class), eq(1000L));
     }
 
     private OutboxEventPO record(ObjectMapper objectMapper) throws Exception {

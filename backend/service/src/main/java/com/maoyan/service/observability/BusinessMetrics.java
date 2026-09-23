@@ -1,6 +1,7 @@
 package com.maoyan.service.observability;
 
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.distribution.HistogramSnapshot;
@@ -24,6 +25,15 @@ public class BusinessMetrics {
     private final Counter checkInDuplicate;
     private final Counter outboxPublishSuccess;
     private final Counter outboxPublishFailure;
+    private final Counter outboxClaimSuccess;
+    private final Counter outboxClaimConflict;
+    private final Timer outboxPollDuration;
+    private final Timer outboxClaimDuration;
+    private final Timer outboxSendDuration;
+    private final Timer outboxMarkPublishedDuration;
+    private final Timer outboxBatchDuration;
+    private final DistributionSummary outboxSelectedCount;
+    private final DistributionSummary outboxPublishedPerBatch;
     private final Map<String, Timer> orderCreateStageTimers;
 
     private static final String[] ORDER_CREATE_STAGES = {
@@ -43,6 +53,15 @@ public class BusinessMetrics {
         checkInDuplicate = registry.counter("xticket.checkin.duplicate");
         outboxPublishSuccess = registry.counter("xticket.outbox.publish.success");
         outboxPublishFailure = registry.counter("xticket.outbox.publish.failure");
+        outboxClaimSuccess = registry.counter("xticket.outbox.publisher.claim.success");
+        outboxClaimConflict = registry.counter("xticket.outbox.publisher.claim.conflict");
+        outboxPollDuration = registry.timer("xticket.outbox.publisher.poll.duration");
+        outboxClaimDuration = registry.timer("xticket.outbox.publisher.claim.duration");
+        outboxSendDuration = registry.timer("xticket.outbox.publisher.send.duration");
+        outboxMarkPublishedDuration = registry.timer("xticket.outbox.publisher.mark.published.duration");
+        outboxBatchDuration = registry.timer("xticket.outbox.publisher.batch.duration");
+        outboxSelectedCount = registry.summary("xticket.outbox.publisher.selected.count");
+        outboxPublishedPerBatch = registry.summary("xticket.outbox.publisher.published.per.batch");
         Map<String, Timer> stageTimers = new LinkedHashMap<>();
         for (String stage : ORDER_CREATE_STAGES) {
             stageTimers.put(stage, Timer.builder("xticket.order.create.stage.duration")
@@ -166,6 +185,29 @@ public class BusinessMetrics {
         increment(outboxPublishFailure);
     }
 
+    public void recordOutboxPoll(long durationNanos, int selectedCount) {
+        record(outboxPollDuration, durationNanos);
+        outboxSelectedCount.record(selectedCount);
+    }
+
+    public void recordOutboxClaim(long durationNanos, boolean claimed) {
+        record(outboxClaimDuration, durationNanos);
+        increment(claimed ? outboxClaimSuccess : outboxClaimConflict);
+    }
+
+    public void recordOutboxSend(long durationNanos) {
+        record(outboxSendDuration, durationNanos);
+    }
+
+    public void recordOutboxMarkPublished(long durationNanos) {
+        record(outboxMarkPublishedDuration, durationNanos);
+    }
+
+    public void recordOutboxBatch(long durationNanos, int publishedCount) {
+        record(outboxBatchDuration, durationNanos);
+        outboxPublishedPerBatch.record(publishedCount);
+    }
+
     private void stop(Timer.Sample sample, String name, boolean success) {
         if (sample == null) {
             return;
@@ -184,6 +226,14 @@ public class BusinessMetrics {
             counter.increment();
         } catch (RuntimeException e) {
             log.warn("[Metrics] Failed to increment counter: name={}", counter.getId().getName(), e);
+        }
+    }
+
+    private void record(Timer timer, long durationNanos) {
+        try {
+            timer.record(Math.max(0L, durationNanos), TimeUnit.NANOSECONDS);
+        } catch (RuntimeException e) {
+            log.warn("[Metrics] Failed to record timer: name={}", timer.getId().getName(), e);
         }
     }
 

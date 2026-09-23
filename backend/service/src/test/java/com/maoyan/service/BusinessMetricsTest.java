@@ -23,6 +23,12 @@ class BusinessMetricsTest {
         metrics.checkInDuplicate();
         metrics.outboxPublishSuccess();
         metrics.outboxPublishFailure();
+        metrics.recordOutboxPoll(1_000_000L, 50);
+        metrics.recordOutboxClaim(2_000_000L, true);
+        metrics.recordOutboxClaim(2_000_000L, false);
+        metrics.recordOutboxSend(3_000_000L);
+        metrics.recordOutboxMarkPublished(4_000_000L);
+        metrics.recordOutboxBatch(5_000_000L, 49);
 
         assertThat(registry.counter("xticket.order.created").count()).isEqualTo(1);
         assertThat(registry.counter("xticket.payment.success").count()).isEqualTo(1);
@@ -33,6 +39,15 @@ class BusinessMetricsTest {
         assertThat(registry.counter("xticket.checkin.duplicate").count()).isEqualTo(1);
         assertThat(registry.counter("xticket.outbox.publish.success").count()).isEqualTo(1);
         assertThat(registry.counter("xticket.outbox.publish.failure").count()).isEqualTo(1);
+        assertThat(registry.counter("xticket.outbox.publisher.claim.success").count()).isEqualTo(1);
+        assertThat(registry.counter("xticket.outbox.publisher.claim.conflict").count()).isEqualTo(1);
+        assertThat(registry.timer("xticket.outbox.publisher.poll.duration").count()).isEqualTo(1);
+        assertThat(registry.timer("xticket.outbox.publisher.claim.duration").count()).isEqualTo(2);
+        assertThat(registry.timer("xticket.outbox.publisher.send.duration").count()).isEqualTo(1);
+        assertThat(registry.timer("xticket.outbox.publisher.mark.published.duration").count()).isEqualTo(1);
+        assertThat(registry.timer("xticket.outbox.publisher.batch.duration").count()).isEqualTo(1);
+        assertThat(registry.summary("xticket.outbox.publisher.selected.count").totalAmount()).isEqualTo(50);
+        assertThat(registry.summary("xticket.outbox.publisher.published.per.batch").totalAmount()).isEqualTo(49);
     }
 
     @Test
