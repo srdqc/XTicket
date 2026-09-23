@@ -19,6 +19,8 @@ export const transactionPaymentDuration = new Trend('transaction_payment_duratio
 export const transactionLockSuccess = new Counter('transaction_lock_success');
 export const transactionCreateSuccess = new Counter('transaction_create_success');
 export const transactionPaymentSuccess = new Counter('transaction_payment_success');
+export const paymentOnlySuccess = new Counter('payment_only_success');
+export const paymentOnlyDuration = new Trend('payment_only_duration', true);
 
 export const Classification = Object.freeze({
   SUCCESS: 'SUCCESS',

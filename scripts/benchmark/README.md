@@ -58,6 +58,7 @@ The transaction workload retains global-iteration rotation across all 100 users.
 | `lock-different-session.js` | Equivalent locks distributed over eight lock keys |
 | `same-seat-contention.js` | Correctness-only contention; exactly one winner expected |
 | `transaction-flow.js` | lock → create → payment; all three must succeed for one transaction |
+| `payment-only.js` | pre-created independent PENDING order → payment only; fixture controls same-user/different-users and seat count |
 
 Transaction TPS means `transaction_success / measurement seconds`. HTTP RPS still contains all three requests and must not be presented as TPS. Stage duration is measured around the corresponding complete HTTP request; full transaction duration remains lock request start through payment success response end.
 

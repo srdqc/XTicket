@@ -7,7 +7,9 @@
     [int]$SamplerIntervalSeconds = 2,
     [switch]$SkipWarmup,
     [switch]$WriteWorkload,
-    [switch]$CaptureOrderCreateProfile
+    [switch]$CaptureOrderCreateProfile,
+    [switch]$CapturePaymentProfile,
+    [string]$PaymentOrderFile = ''
 )
 
 Set-StrictMode -Version Latest
@@ -151,6 +153,30 @@ function Save-OrderCreateProfile([string]$OutputPath) {
     return $profile
 }
 
+function Save-PaymentProfile([string]$OutputPath) {
+    $composePath = Join-Path $repoRoot 'docker-compose.yml'
+    $profileOutput = & docker compose -f $composePath exec -T backend `
+        wget -qO- http://127.0.0.1:8080/actuator/paymentprofile 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Payment profile capture failed: $($profileOutput -join ' ')" }
+    $profileJson = ($profileOutput | Out-String).Trim()
+    try { $profile = $profileJson | ConvertFrom-Json }
+    catch { throw "Payment profile JSON parse failed: $($_.Exception.Message)" }
+    $criticalStages = @(
+        'payment_idempotency', 'payment_order_load', 'payment_seat_lock_load',
+        'payment_points_debit', 'payment_order_transition', 'payment_order_seat',
+        'payment_record_write', 'payment_ticket_issue', 'payment_outbox_insert',
+        'payment_response_mapping', 'payment_tx_completion'
+    )
+    foreach ($stage in $criticalStages) {
+        $property = $profile.PSObject.Properties[$stage]
+        if ($null -eq $property -or [long]$property.Value.count -le 0) {
+            throw "Payment profile stage count is zero or missing: $stage"
+        }
+    }
+    [IO.File]::WriteAllText($OutputPath, $profileJson, [Text.UTF8Encoding]::new($false))
+    return $profile
+}
+
 Push-Location $benchmarkRoot
 try {
     if (-not $SkipWarmup) {
@@ -175,9 +201,15 @@ try {
         '-e', 'PHASE=measurement', '-e', "VUS=$VUs",
         '-e', "DURATION=$Duration", $scenarioPath
     )
+    if (-not [string]::IsNullOrWhiteSpace($PaymentOrderFile)) {
+        $measureArgs = $measureArgs[0..($measureArgs.Count - 2)] + @('-e', "PAYMENT_ORDER_FILE=$PaymentOrderFile") + $measureArgs[-1]
+    }
     $required = @('http_reqs', 'http_req_duration', 'vus_max', 'app_success', 'system_error')
     if ($Scenario -eq 'transaction-flow') {
         $required += @('transaction_success', 'transaction_duration')
+    }
+    if ($Scenario -eq 'payment-only') {
+        $required += @('payment_only_success', 'payment_only_duration')
     }
     $metricsPath = Join-Path $rawDir "$name-metrics.jsonl"
     $metricsSummaryPath = Join-Path $rawDir "$name-metrics-summary.json"
@@ -195,6 +227,12 @@ try {
         $profilePath = Join-Path $rawDir "$name-order-create-profile.json"
         $profileSnapshot = Save-OrderCreateProfile $profilePath
     }
+    $paymentProfilePath = $null
+    $paymentProfileSnapshot = $null
+    if ($CapturePaymentProfile) {
+        $paymentProfilePath = Join-Path $rawDir "$name-payment-profile.json"
+        $paymentProfileSnapshot = Save-PaymentProfile $paymentProfilePath
+    }
     $cleanup = $null
     if ($WriteWorkload) { $cleanup = Invoke-Reset $measurementEndedAt }
 
@@ -210,6 +248,8 @@ try {
         metricsSummary = $metricsSummary
         orderCreateProfile = $profilePath
         orderCreateProfileSnapshot = $profileSnapshot
+        paymentProfile = $paymentProfilePath
+        paymentProfileSnapshot = $paymentProfileSnapshot
         cleanup = $cleanup
     } | ConvertTo-Json -Compress
 } finally {
