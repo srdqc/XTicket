@@ -20,7 +20,8 @@ $metricNames = @(
     'xticket.outbox.publisher.selected.count',
     'xticket.outbox.publisher.published.per.batch',
     'xticket.outbox.publisher.claim.success',
-    'xticket.outbox.publisher.claim.conflict'
+    'xticket.outbox.publisher.claim.conflict',
+    'xticket.outbox.publish.failure'
 )
 
 function Invoke-Db([string]$Sql) {
@@ -66,13 +67,14 @@ function Get-State {
     $row = @(Invoke-Db @"
 SELECT
   SUM(status='PENDING'), SUM(status='PROCESSING'), SUM(status='FAILED'), SUM(status='PUBLISHED'),
-  (SELECT COUNT(*) FROM consumed_event WHERE consumer_group='$consumerGroup' AND event_id LIKE '$prefix%')
+  (SELECT COUNT(*) FROM consumed_event WHERE consumer_group='$consumerGroup' AND event_id LIKE '$prefix%'),
+  COALESCE(SUM(retry_count),0)
 FROM outbox_event WHERE event_id LIKE '$prefix%';
 "@)
     if ($row.Count -ne 1) { throw "Unexpected state rows: $($row.Count)" }
     $v = @($row[0] -split "`t")
-    if ($v.Count -ne 5) { throw "Unexpected state: $($row[0])" }
-    return [pscustomobject]@{ pending=[long]$v[0]; processing=[long]$v[1]; failed=[long]$v[2]; published=[long]$v[3]; consumed=[long]$v[4] }
+    if ($v.Count -ne 6) { throw "Unexpected state: $($row[0])" }
+    return [pscustomobject]@{ pending=[long]$v[0]; processing=[long]$v[1]; failed=[long]$v[2]; published=[long]$v[3]; consumed=[long]$v[4]; retries=[long]$v[5] }
 }
 
 Push-Location $repoRoot
@@ -124,6 +126,8 @@ try {
         publishedPerBatch=[long](Metric-Delta $before $after 'xticket.outbox.publisher.published.per.batch' 'TOTAL')
         claimSuccess=[long](Metric-Delta $before $after 'xticket.outbox.publisher.claim.success' 'COUNT')
         claimConflict=[long](Metric-Delta $before $after 'xticket.outbox.publisher.claim.conflict' 'COUNT')
+        sendErrors=[long](Metric-Delta $before $after 'xticket.outbox.publish.failure' 'COUNT')
+        retries=[long]$state.retries
         final=$state
     }
     Invoke-Db "DELETE FROM consumed_event WHERE consumer_group='$consumerGroup' AND event_id LIKE '$prefix%'; DELETE FROM outbox_event WHERE event_id LIKE '$prefix%';" | Out-Null

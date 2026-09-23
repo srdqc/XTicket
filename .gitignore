@@ -51,3 +51,4 @@ docs/
 
 # Benchmark runtime secrets and raw output
 scripts/benchmark/results/raw/
+scripts/benchmark/results/phase6c-8-*/

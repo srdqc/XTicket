@@ -91,6 +91,8 @@ try {
     $peakOpen = $initial.open
     $at10Seconds = $null
     $at30Seconds = $null
+    $at60Seconds = $null
+    $at120Seconds = $null
     $timeToZeroSeconds = $null
     $finalState = $initial
 
@@ -106,6 +108,8 @@ try {
         if ($null -eq $at30Seconds -and $elapsed -ge $ObservationCheckpointSeconds) {
             $at30Seconds = Copy-State $state
         }
+        if ($null -eq $at60Seconds -and $elapsed -ge 60) { $at60Seconds = Copy-State $state }
+        if ($null -eq $at120Seconds -and $elapsed -ge 120) { $at120Seconds = Copy-State $state }
         if ($null -eq $timeToZeroSeconds -and $state.pending -eq 0 -and $state.processing -eq 0) {
             $timeToZeroSeconds = [Math]::Round($elapsed, 3)
         }
@@ -116,6 +120,8 @@ try {
 
     if ($null -eq $at10Seconds) { $at10Seconds = Copy-State $finalState }
     if ($null -eq $at30Seconds) { $at30Seconds = Copy-State $finalState }
+    if ($null -eq $at60Seconds) { $at60Seconds = Copy-State $finalState }
+    if ($null -eq $at120Seconds) { $at120Seconds = Copy-State $finalState }
     if (-not $drained) {
         throw "Outbox cleanup safety timeout after ${DrainTimeoutSeconds}s: pending=$($finalState.pending), processing=$($finalState.processing), failed=$($finalState.failed), missingConsumed=$($finalState.missingConsumed); cleanup not started"
     }
@@ -188,6 +194,8 @@ WHERE LEFT(u.account, 11) = 'BENCH_USER_'
             openAtMeasurementEnd = [long]$initial.open
             openAt10Seconds = [long]$at10Seconds.open
             openAt30Seconds = [long]$at30Seconds.open
+            openAt60Seconds = [long]$at60Seconds.open
+            openAt120Seconds = [long]$at120Seconds.open
             timeToZeroSeconds = $timeToZeroSeconds
             peakOpen = [long]$peakOpen
             peakPending = [long]$peakPending

@@ -10,14 +10,18 @@
     [switch]$CaptureOrderCreateProfile,
     [switch]$CapturePaymentProfile,
     [switch]$CaptureMysqlLocks,
-    [string]$PaymentOrderFile = ''
+    [string]$PaymentOrderFile = '',
+    [string]$OutputDirectory = '',
+    [int]$OutboxDrainTimeoutSeconds = 120
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $benchmarkRoot = $PSScriptRoot
 $repoRoot = (Resolve-Path (Join-Path $benchmarkRoot '..\..')).Path
-$rawDir = Join-Path $benchmarkRoot 'results\raw'
+$rawDir = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    Join-Path $benchmarkRoot 'results\raw'
+} else { [IO.Path]::GetFullPath($OutputDirectory) }
 $k6Exe = (Get-Command k6 -ErrorAction Stop).Source
 $commit = (git -C $repoRoot rev-parse --short HEAD).Trim()
 $name = '{0}-vu{1}-run{2}-{3}' -f $Scenario, $VUs, $Run, $commit
@@ -86,7 +90,8 @@ function Invoke-K6Native(
 }
 
 function Invoke-Reset([string]$DrainStartedAtUtc) {
-    $result = & (Join-Path $benchmarkRoot 'reset.ps1') -DrainStartedAtUtc $DrainStartedAtUtc
+    $result = & (Join-Path $benchmarkRoot 'reset.ps1') -DrainStartedAtUtc $DrainStartedAtUtc `
+        -DrainTimeoutSeconds $script:OutboxDrainTimeoutSeconds
     if ($LASTEXITCODE -ne 0) { throw "Reset failed: $result" }
     return (($result | Out-String).Trim() | ConvertFrom-Json)
 }
