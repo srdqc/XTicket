@@ -24,7 +24,7 @@ for ($i = 0; $i -lt $OrderCount; $i++) {
     $user = if ($Mode -eq 'same-user') { $tokens[0] } else { $tokens[$i % $tokens.Count] }
     $orderNo = 'BP{0}{1:D6}' -f $RunLabel, ($i + 1)
     $lockToken = 'BPL{0}{1:D6}' -f $RunLabel, ($i + 1)
-    $absoluteSeat = $i * $SeatCount
+    $absoluteSeat = 10000 + ($i * $SeatCount)
     $sessionOffset = [Math]::Floor($absoluteSeat / 20000)
     if ($sessionOffset -gt 7) { throw 'Payment fixture exceeds reserved session capacity' }
     $sessionId = 910001 + $sessionOffset
@@ -44,6 +44,7 @@ for ($i = 0; $i -lt $OrderCount; $i++) {
 
 $sql = @"
 SET NAMES utf8mb4;
+START TRANSACTION;
 INSERT INTO ticket_order (order_no,user_id,schedule_id,lock_token,movie_name,cinema_name,hall_name,show_time,seat_count,seats_info,unit_price,total_price,status,expire_time,create_time,update_time,deleted) VALUES
 $($orderValues -join ",`n");
 INSERT INTO seat_lock (schedule_id,row_num,col_num,user_id,lock_token,order_no,lock_until,status,create_time,update_time) VALUES
@@ -53,6 +54,7 @@ SELECT UUID(),'ORDER',o.order_no,'CREATED','ORDER_TOPIC','ORDER_CREATED',JSON_OB
 FROM ticket_order o WHERE o.order_no LIKE 'BP$RunLabel%';
 INSERT INTO consumed_event (consumer_group,event_id,consumed_at)
 SELECT 'maoyan_order_consumer_group',event_id,NOW() FROM outbox_event WHERE aggregate_id LIKE 'BP$RunLabel%';
+COMMIT;
 "@
 
 New-Item -ItemType Directory -Force $rawDir | Out-Null

@@ -9,6 +9,7 @@
     [switch]$WriteWorkload,
     [switch]$CaptureOrderCreateProfile,
     [switch]$CapturePaymentProfile,
+    [switch]$CaptureMysqlLocks,
     [string]$PaymentOrderFile = ''
 )
 
@@ -101,6 +102,13 @@ function Start-MetricsSampler(
     )
 }
 
+function Start-MysqlLockSampler([string]$OutputPath, [string]$SummaryPath, [string]$StopPath) {
+    if (Test-Path -LiteralPath $StopPath) { Remove-Item -LiteralPath $StopPath -Force }
+    return Start-Job -FilePath (Join-Path $benchmarkRoot 'mysql-lock-sampler.ps1') -ArgumentList @(
+        $OutputPath, $SummaryPath, $StopPath, 1, $repoRoot
+    )
+}
+
 function Stop-MetricsSampler($Job, [string]$StopPath, [string]$SummaryPath) {
     New-Item -ItemType File -Path $StopPath -Force | Out-Null
     $completed = Wait-Job -Job $Job -Timeout 20
@@ -164,6 +172,7 @@ function Save-PaymentProfile([string]$OutputPath) {
     $criticalStages = @(
         'payment_idempotency', 'payment_order_load', 'payment_seat_lock_load',
         'payment_points_debit', 'payment_order_transition', 'payment_order_seat',
+        'payment_order_seat_total', 'payment_order_seat_insert', 'payment_seat_lock_update',
         'payment_record_write', 'payment_ticket_issue', 'payment_outbox_insert',
         'payment_response_mapping', 'payment_tx_completion'
     )
@@ -215,11 +224,20 @@ try {
     $metricsSummaryPath = Join-Path $rawDir "$name-metrics-summary.json"
     $samplerStopPath = Join-Path $rawDir "$name-metrics.stop"
     $samplerJob = Start-MetricsSampler $metricsPath $metricsSummaryPath $samplerStopPath
+    $mysqlLockPath = Join-Path $rawDir "$name-mysql-locks.jsonl"
+    $mysqlLockSummaryPath = Join-Path $rawDir "$name-mysql-locks-summary.json"
+    $mysqlLockStopPath = Join-Path $rawDir "$name-mysql-locks.stop"
+    $mysqlLockJob = if ($CaptureMysqlLocks) {
+        Start-MysqlLockSampler $mysqlLockPath $mysqlLockSummaryPath $mysqlLockStopPath
+    } else { $null }
     try {
         $exitCode = Invoke-K6Native $measureArgs $logPath $summaryPath $required $VUs
         $measurementEndedAt = [DateTimeOffset]::UtcNow.ToString('o')
     } finally {
         $metricsSummary = Stop-MetricsSampler $samplerJob $samplerStopPath $metricsSummaryPath
+        $mysqlLockSummary = if ($null -ne $mysqlLockJob) {
+            Stop-MetricsSampler $mysqlLockJob $mysqlLockStopPath $mysqlLockSummaryPath
+        } else { $null }
     }
     $profilePath = $null
     $profileSnapshot = $null
@@ -246,6 +264,8 @@ try {
         log = $logPath
         metrics = $metricsSummaryPath
         metricsSummary = $metricsSummary
+        mysqlLocks = if ($CaptureMysqlLocks) { $mysqlLockSummaryPath } else { $null }
+        mysqlLockSummary = $mysqlLockSummary
         orderCreateProfile = $profilePath
         orderCreateProfileSnapshot = $profileSnapshot
         paymentProfile = $paymentProfilePath
