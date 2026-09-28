@@ -8,12 +8,13 @@ import Loading from '@/components/Loading'
 import api from '@/lib/api'
 import { useUserStore } from '@/store/user'
 import type { OrderItem } from '@/types'
+import { getOrderDisplay } from '@/lib/order'
 
 function PaymentContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const orderNo = searchParams.get('orderNo')
-  const { points, setPoints, fetchPoints, isLogged } = useUserStore()
+  const { points, setPoints, fetchProfile } = useUserStore()
 
   const [order, setOrder] = useState<OrderItem | null>(null)
   const [loading, setLoading] = useState(true)
@@ -41,14 +42,14 @@ function PaymentContent() {
   // 加载订单详情 + 刷新积分
   useEffect(() => {
     if (!orderNo) return
-    fetchPoints()
+    fetchProfile()
     refreshOrder()
       .then((res) => {
         if (!res) toast.error('加载订单失败')
       })
       .catch(() => toast.error('加载订单失败'))
       .finally(() => setLoading(false))
-  }, [orderNo, fetchPoints, refreshOrder])
+  }, [orderNo, fetchProfile, refreshOrder])
 
   // 倒计时
   useEffect(() => {
@@ -127,6 +128,7 @@ function PaymentContent() {
 
   if (loading) return <Loading />
   if (!order) return <div className="text-center py-20 text-gray-400">订单不存在</div>
+  const display = getOrderDisplay(order)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -164,9 +166,9 @@ function PaymentContent() {
             <div className="text-gray-400">订单编号</div>
             <div className="text-gray-700 font-mono">{order.orderNo}</div>
             <div className="text-gray-400">活动</div>
-            <div className="text-gray-700">{order.movieName || '-'}</div>
+            <div className="text-gray-700">{display.activityName}</div>
             <div className="text-gray-400">场馆</div>
-            <div className="text-gray-700">{order.cinemaName || '-'}</div>
+            <div className="text-gray-700">{display.venueName}</div>
             <div className="text-gray-400">会场</div>
             <div className="text-gray-700">{order.hallName || '-'}</div>
             <div className="text-gray-400">场次</div>
@@ -191,7 +193,10 @@ function PaymentContent() {
           <>
             <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
               <h2 className="text-lg font-medium text-gray-800 mb-4">积分支付</h2>
-              <div className="flex items-center justify-between p-4 rounded-lg border-2 border-primary bg-red-50">
+              <p className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded p-3">
+                Demo 说明：当前使用 MOCK_POINTS 模拟积分支付，未接入真实资金渠道。
+              </p>
+              <div className="flex items-center justify-between p-4 rounded-lg border-2 border-primary bg-indigo-50">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
                     <Coins className="w-5 h-5 text-amber-500" />
@@ -222,7 +227,7 @@ function PaymentContent() {
               onClick={handlePay}
               disabled={paying || !hasEnoughPoints || !canPay}
               className={`w-full py-4 rounded-full text-white font-medium text-lg transition-colors ${
-                paying || !hasEnoughPoints || !canPay ? 'bg-gray-300 cursor-not-allowed' : 'bg-primary hover:bg-red-600'
+                paying || !hasEnoughPoints || !canPay ? 'bg-gray-300 cursor-not-allowed' : 'bg-primary hover:bg-indigo-700'
               }`}
             >
               {paying ? '支付处理中...' : `积分支付 ${pointsCost} 积分`}

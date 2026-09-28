@@ -1,5 +1,5 @@
 # =========================================
-# 猫眼前端 - 多阶段构建 Dockerfile
+# XTicket 前端 - 多阶段构建 Dockerfile
 #
 # Stage 1: Node.js 编译
 # Stage 2: Node.js 运行 standalone server

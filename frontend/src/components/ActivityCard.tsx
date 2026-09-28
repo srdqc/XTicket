@@ -11,10 +11,13 @@ interface ActivityCardProps {
 
 export default function ActivityCard({ activity, showButton = true }: ActivityCardProps) {
   const router = useRouter()
-  const isReleased = activity.released
+  const isOnSale = activity.released
 
   return (
-    <div className="w-[160px] flex flex-col mb-6 group cursor-pointer">
+    <div
+      className="w-[160px] flex flex-col mb-6 group cursor-pointer"
+      onClick={() => router.push(`/activities/${activity.id}`)}
+    >
       <div className="relative w-full h-[220px] overflow-hidden bg-gray-200 shadow-sm">
         <img
           src={imgUrlReplace(activity.coverUrl)}
@@ -37,23 +40,21 @@ export default function ActivityCard({ activity, showButton = true }: ActivityCa
           </div>
         )}
 
-        {/* Rating / Want-to-follow Overlay at Bottom */}
+        {/* Activity status and name */}
         <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black/80 to-transparent p-2 pt-6 flex justify-between items-end">
           <span className="text-white text-xs font-medium truncate w-full">
             {activity.name}
           </span>
-          {isReleased && activity.score ? (
-            <span className="text-gold font-bold italic text-base absolute bottom-1 right-2">
-              {Number(activity.score).toFixed(1)}
-            </span>
-          ) : null}
+          <span className={`text-[10px] px-1.5 py-0.5 rounded absolute bottom-1 right-2 ${isOnSale ? 'bg-primary text-white' : 'bg-amber-400 text-white'}`}>
+            {isOnSale ? '售票中' : '即将开售'}
+          </span>
         </div>
       </div>
 
       {/* Below Image Content */}
       {showButton && (
         <div className="mt-2 flex items-center justify-between text-sm">
-          {isReleased ? (
+          {isOnSale ? (
             <button className="w-full py-1.5 mt-1 border border-gray-200 text-primary rounded hover:bg-primary hover:text-white transition-colors text-sm">
               购票
             </button>
@@ -63,7 +64,7 @@ export default function ActivityCard({ activity, showButton = true }: ActivityCa
                 <span className="text-gold">{activity.followCount}人关注</span>
               </div>
               <button
-                onClick={() => router.push(`/activities/${activity.id}`)}
+                onClick={(event) => { event.stopPropagation(); router.push(`/activities/${activity.id}`) }}
                 className="w-full py-1.5 border border-gray-200 text-secondary rounded hover:bg-gray-50 text-xs"
               >
                 查看详情

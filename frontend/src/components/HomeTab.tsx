@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight } from 'lucide-react'
 import ActivityCard from '@/components/ActivityCard'
 import Loading from '@/components/Loading'
 import api from '@/lib/api'
@@ -12,6 +11,21 @@ export default function HomeTab() {
   const [hotActivities, setHotActivities] = useState<ActivityItem[]>([])
   const [comingActivities, setComingActivities] = useState<ActivityItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeCategory, setActiveCategory] = useState('全部')
+
+  const categories = ['全部', '演唱会', '音乐节', '体育赛事', '电竞赛事', '展览', '舞台演出']
+  const matchesCategory = (activity: ActivityItem) => {
+    if (activeCategory === '全部') return true
+    const category = activity.category || ''
+    const aliases: Record<string, string[]> = {
+      '展览': ['展'],
+      '舞台演出': ['剧', '演出', '魔术'],
+      '体育赛事': ['体育', '赛事', '跑步', '舞蹈'],
+    }
+    return (aliases[activeCategory] || [activeCategory]).some((keyword) => category.includes(keyword))
+  }
+  const visibleOnSale = hotActivities.filter(matchesCategory)
+  const visibleUpcoming = comingActivities.filter(matchesCategory)
 
   useEffect(() => {
     Promise.all([
@@ -31,32 +45,42 @@ export default function HomeTab() {
   if (loading) return <Loading />
 
   return (
-    <div className="flex gap-10">
+    <div>
+      <div className="mb-8 flex flex-wrap items-center gap-3 border border-gray-100 bg-white p-4 shadow-sm">
+        <span className="mr-2 text-sm text-gray-400">活动分类</span>
+        {categories.map((category) => (
+          <button
+            key={category}
+            onClick={() => setActiveCategory(category)}
+            className={`rounded-full px-4 py-1.5 text-sm transition ${activeCategory === category ? 'bg-primary text-white' : 'bg-gray-50 text-gray-600 hover:text-primary'}`}
+          >
+            {category}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-10">
       {/* LEFT COLUMN: Activities */}
       <div className="flex-1">
         {/* 精选活动 */}
         <div className="mb-12">
           <div className="flex justify-between items-end mb-6">
             <h2 className="text-2xl text-primary font-normal">
-              精选活动{' '}
+              售票中{' '}
               <span className="text-2xl text-primary ml-1">
-                （{hotActivities.length}个）
+                （{visibleOnSale.length}个）
               </span>
             </h2>
-            <a className="flex items-center text-primary hover:underline text-sm cursor-pointer">
-              全部 <ChevronRight size={14} />
-            </a>
           </div>
 
           <div className="grid grid-cols-4 gap-6">
-            {hotActivities.map((activity) => (
+            {visibleOnSale.map((activity) => (
               <div key={activity.id} className="flex flex-col items-center">
                 <ActivityCard activity={activity} showButton={false} />
                 <button
                   onClick={() => router.push(`/activities/${activity.id}`)}
                   className="w-full max-w-[160px] py-1 text-primary bg-white border border-gray-200 shadow-sm rounded-full hover:bg-primary hover:text-white transition-colors text-sm -mt-2"
                 >
-                  购票
+                  查看场次
                 </button>
               </div>
             ))}
@@ -67,18 +91,15 @@ export default function HomeTab() {
         <div>
           <div className="flex justify-between items-end mb-6 border-b border-gray-100 pb-2">
             <h2 className="text-2xl text-secondary font-normal">
-              更多活动{' '}
+              即将开售{' '}
               <span className="text-2xl text-secondary ml-1">
-                （{comingActivities.length}个）
+                （{visibleUpcoming.length}个）
               </span>
             </h2>
-            <a className="flex items-center text-secondary hover:underline text-sm cursor-pointer">
-              全部 <ChevronRight size={14} />
-            </a>
           </div>
 
           <div className="grid grid-cols-4 gap-6">
-            {comingActivities.map((activity) => (
+            {visibleUpcoming.map((activity) => (
               <div key={activity.id} className="flex flex-col items-center">
                 <ActivityCard activity={activity} showButton={true} />
               </div>
@@ -93,14 +114,11 @@ export default function HomeTab() {
         <div className="mb-10">
           <div className="flex justify-between items-end mb-4">
             <h3 className="text-xl text-gold">关注较多</h3>
-            <a className="flex items-center text-gold hover:underline text-xs cursor-pointer">
-              查看更多 <ChevronRight size={12} />
-            </a>
           </div>
 
           {/* Top 1 Large */}
           {comingActivities[0] && (
-            <div className="mb-4 bg-white border border-gray-100 p-0 relative group cursor-pointer overflow-hidden">
+            <div onClick={() => router.push(`/activities/${comingActivities[0].id}`)} className="mb-4 bg-white border border-gray-100 p-0 relative group cursor-pointer overflow-hidden">
               <div className="w-full h-40 overflow-hidden relative">
                 <img
                   src={comingActivities[0].coverUrl}
@@ -127,7 +145,7 @@ export default function HomeTab() {
           {comingActivities.length >= 3 && (
             <div className="flex gap-3 mb-4">
               {[comingActivities[1], comingActivities[2]].map((m, idx) => (
-                <div key={m.id} className="flex-1 relative cursor-pointer">
+                <div key={m.id} onClick={() => router.push(`/activities/${m.id}`)} className="flex-1 relative cursor-pointer">
                   <div className="w-full h-28 overflow-hidden relative bg-gray-100">
                     <img
                       src={m.coverUrl}
@@ -152,7 +170,8 @@ export default function HomeTab() {
             {comingActivities.slice(3).map((m, idx) => (
               <li
                 key={m.id}
-                className="flex justify-between items-center text-sm"
+                onClick={() => router.push(`/activities/${m.id}`)}
+                className="flex justify-between items-center text-sm cursor-pointer hover:text-primary"
               >
                 <div className="flex items-center">
                   <span className="text-gray-400 italic mr-3 w-3">
@@ -165,6 +184,7 @@ export default function HomeTab() {
             ))}
           </ul>
         </div>
+      </div>
       </div>
     </div>
   )

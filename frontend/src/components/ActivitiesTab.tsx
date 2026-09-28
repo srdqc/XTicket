@@ -8,19 +8,15 @@ import api from '@/lib/api'
 import type { ActivityItem } from '@/types'
 
 type SubTab = 'featured' | 'more'
-type SortType = 'hot' | 'time' | 'rating'
+type SortType = 'hot' | 'time'
 
-const CATEGORIES = ['全部', '爱情', '喜剧', '动画', '剧情', '恐怖', '惊悚', '科幻', '动作', '悬疑', '犯罪', '冒险', '战争', '奇幻']
-const SOURCES = ['全部', '大陆', '美国', '韩国', '日本', '中国香港', '中国台湾', '泰国', '印度', '法国', '英国', '俄罗斯']
-const YEARS = ['全部', '2026', '2025', '2024', '2023', '2022', '2021', '2020', '2019', '2018']
+const CATEGORIES = ['全部', '演唱会', '音乐节', '体育赛事', '电竞赛事', '艺术展', '舞台剧', '音乐会', '文化讲座']
 
 export default function ActivitiesTab() {
   const router = useRouter()
   const [subTab, setSubTab] = useState<SubTab>('featured')
   const [sortType, setSortType] = useState<SortType>('hot')
   const [activeCategory, setActiveCategory] = useState('全部')
-  const [activeSource, setActiveSource] = useState('全部')
-  const [activeYear, setActiveYear] = useState('全部')
   const [activities, setActivities] = useState<ActivityItem[]>([])
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
@@ -36,8 +32,6 @@ export default function ActivitiesTab() {
       pageSize: 30,
     }
     if (activeCategory !== '全部') params.category = activeCategory
-    if (activeSource !== '全部') params.source = activeSource
-    if (activeYear !== '全部') params.year = parseInt(activeYear)
 
     api.getActivities(params)
       .then((res) => {
@@ -54,7 +48,7 @@ export default function ActivitiesTab() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [subTab, sortType, activeCategory, activeSource, activeYear])
+  }, [subTab, sortType, activeCategory])
 
   useEffect(() => {
     fetchActivities(1)
@@ -79,7 +73,7 @@ export default function ActivitiesTab() {
                 : 'text-gray-300 hover:text-white transition-colors'
             }`}
           >
-            精选活动
+            售票中
           </button>
           <button
             onClick={() => { setSubTab('more'); setPage(1) }}
@@ -89,7 +83,7 @@ export default function ActivitiesTab() {
                 : 'text-gray-300 hover:text-white transition-colors'
             }`}
           >
-          更多活动
+          即将开售
           </button>
         </div>
       </div>
@@ -102,18 +96,6 @@ export default function ActivitiesTab() {
           active={activeCategory}
           onSelect={setActiveCategory}
         />
-        <FilterRow
-          label="来源："
-          options={SOURCES}
-          active={activeSource}
-          onSelect={setActiveSource}
-        />
-        <FilterRow
-          label="年代："
-          options={YEARS}
-          active={activeYear}
-          onSelect={setActiveYear}
-        />
       </div>
 
       {/* Sort Bar + Total */}
@@ -121,7 +103,6 @@ export default function ActivitiesTab() {
         <div className="flex space-x-6 text-sm text-gray-500">
           <SortRadio label="按热门排序" active={sortType === 'hot'} onClick={() => setSortType('hot')} />
           <SortRadio label="按时间排序" active={sortType === 'time'} onClick={() => setSortType('time')} />
-          <SortRadio label="按评价排序" active={sortType === 'rating'} onClick={() => setSortType('rating')} />
         </div>
         <span className="text-sm text-gray-400">共 {total} 个</span>
       </div>
@@ -145,15 +126,9 @@ export default function ActivitiesTab() {
                   <h3 className="truncate font-medium text-gray-800 text-[16px] mb-1">
                     {activity.name}
                   </h3>
-                  {activity.released && activity.score ? (
-                    <div className="text-gold text-sm italic">
-                      {Number(activity.score).toFixed(1)}
-                    </div>
-                  ) : activity.released ? (
-                    <div className="text-gray-400 text-sm">暂无评分</div>
-                  ) : (
-                    <div className="text-gold text-sm">{activity.followCount}人关注</div>
-                  )}
+                  <div className={activity.released ? 'text-primary text-sm' : 'text-gold text-sm'}>
+                    {activity.released ? '售票中' : '即将开售'} · {activity.followCount || 0}人关注
+                  </div>
                 </div>
               </div>
             ))}

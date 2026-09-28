@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import Loading from '@/components/Loading'
 import api from '@/lib/api'
 import type { OrderItem } from '@/types'
+import { getOrderDisplay } from '@/lib/order'
 
 const statusConfig: Record<number, { label: string; color: string; icon: React.ReactNode }> = {
   0: { label: '待支付', color: 'text-amber-500', icon: <Clock className="w-4 h-4 text-amber-500" /> },
@@ -90,21 +91,20 @@ export default function OrdersPage() {
           <div className="space-y-4">
             {orders.map((order) => {
               const sc = statusConfig[order.status] || statusConfig[2]
+              const display = getOrderDisplay(order)
               return (
                 <div key={order.orderNo} className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                   <div className="flex">
                     {/* 活动封面 */}
-                    {order.movieImg && (
-                      <div className="w-[100px] h-[140px] flex-shrink-0">
-                        <img src={order.movieImg} alt={order.movieName} className="w-full h-full object-cover" />
-                      </div>
-                    )}
+                    <div className="w-[100px] h-[140px] flex-shrink-0">
+                      <img src={display.activityCoverUrl} alt={display.activityName} className="w-full h-full object-cover" />
+                    </div>
 
                     {/* 信息 */}
                     <div className="flex-1 p-4 flex justify-between">
                       <div className="space-y-1">
-                        <div className="text-base font-medium text-gray-800">{order.movieName}</div>
-                        <div className="text-sm text-gray-500">{order.cinemaName}{order.hallName ? ` · ${order.hallName}` : ''}</div>
+                        <div className="text-base font-medium text-gray-800">{display.activityName}</div>
+                        <div className="text-sm text-gray-500">{display.venueName}{order.hallName ? ` · ${order.hallName}` : ''}</div>
                         <div className="text-sm text-gray-500">{order.showTime}</div>
                         <div className="text-sm text-gray-500">座位：{order.seatsInfo || `${order.seatCount}张`}</div>
                         <div className="text-xs text-gray-400 font-mono">订单号：{order.orderNo}</div>
@@ -130,7 +130,7 @@ export default function OrdersPage() {
                               </button>
                               <button
                                 onClick={() => router.push(`/tickets?orderNo=${encodeURIComponent(order.orderNo)}`)}
-                                className="px-3 py-1 text-xs border border-primary text-primary rounded-full hover:bg-red-50"
+                                className="px-3 py-1 text-xs border border-primary text-primary rounded-full hover:bg-indigo-50"
                               >
                                 查看电子票
                               </button>
@@ -154,7 +154,7 @@ export default function OrdersPage() {
                               </button>
                               <button
                                 onClick={() => handlePay(order.orderNo)}
-                                className="px-3 py-1 text-xs bg-primary text-white rounded-full hover:bg-red-600"
+                                className="px-3 py-1 text-xs bg-primary text-white rounded-full hover:bg-indigo-700"
                               >
                                 去支付
                               </button>

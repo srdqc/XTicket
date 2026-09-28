@@ -2,7 +2,7 @@ import type { CityItem, CityGroup } from '@/types'
 
 /** 处理图片 URL - 支持占位图和 CDN 图 */
 export function imgUrlReplace(img: string): string {
-  if (!img) return 'https://picsum.photos/seed/default/180/250'
+  if (!img) return '/images/event-placeholder.svg'
   if (img.startsWith('http')) return img
   return img.replace('w.h', '128.180')
 }

@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, Search, User, Smartphone, Coins } from 'lucide-react'
+import { ChevronDown, Search, User, Coins, TicketCheck } from 'lucide-react'
 import { useUserStore } from '@/store/user'
 import { useHomeStore } from '@/store/home'
 import type { Tab } from '@/types'
@@ -14,10 +14,14 @@ interface HeaderProps {
 
 export default function Header({ activeTab, setActiveTab }: HeaderProps) {
   const router = useRouter()
-  const { isLogged, userNick, points, logout } = useUserStore()
+  const { isLogged, userNick, points, role, fetchProfile, logout } = useUserStore()
   const { position } = useHomeStore()
   const [searchText, setSearchText] = useState('')
   const [showUserMenu, setShowUserMenu] = useState(false)
+
+  useEffect(() => {
+    if (isLogged) fetchProfile()
+  }, [isLogged, fetchProfile])
 
   const handleSearch = () => {
     if (searchText.trim()) {
@@ -35,9 +39,7 @@ export default function Header({ activeTab, setActiveTab }: HeaderProps) {
             className="flex items-center cursor-pointer"
             onClick={() => setActiveTab('home')}
           >
-            <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center mr-2">
-              <span className="text-white font-bold text-xl">X</span>
-            </div>
+            <img src="/images/xticket-logo.svg" alt="XTicket" className="w-11 h-11 mr-2" />
             <span className="text-2xl font-bold text-primary">XTicket</span>
           </div>
 
@@ -75,14 +77,8 @@ export default function Header({ activeTab, setActiveTab }: HeaderProps) {
           </nav>
         </div>
 
-        {/* Right: App, Search, User */}
+        {/* Right: Search, User */}
         <div className="flex items-center space-x-6">
-          <div className="flex items-center text-gray-500 cursor-pointer hover:text-primary">
-            <Smartphone size={18} className="mr-1" />
-            <span className="text-sm">APP下载</span>
-            <ChevronDown size={14} className="ml-1" />
-          </div>
-
           {/* Search */}
           <div className="relative">
             <input
@@ -143,6 +139,20 @@ export default function Header({ activeTab, setActiveTab }: HeaderProps) {
                   >
                     我的订单
                   </button>
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                    onClick={() => { router.push('/tickets'); setShowUserMenu(false) }}
+                  >
+                    我的电子票
+                  </button>
+                  {role === 'CHECKIN_STAFF' && (
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 flex items-center gap-2"
+                      onClick={() => { router.push('/checkin'); setShowUserMenu(false) }}
+                    >
+                      <TicketCheck size={14} />核销工作台
+                    </button>
+                  )}
                   <button
                     className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
                     onClick={() => {

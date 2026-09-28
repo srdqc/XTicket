@@ -105,7 +105,7 @@ export default function ActivityDetailPage() {
         {detail.photos && <StagePhoto photos={detail.photos} photoTotal={detail.photoCount || 0} />}
 
         <div className="px-8 py-6 border-t border-gray-100">
-          <button onClick={handleShowSchedule} className="px-8 py-3 bg-primary text-white rounded-full text-base hover:bg-red-600 transition-colors">
+          <button onClick={handleShowSchedule} className="px-8 py-3 bg-primary text-white rounded-full text-base hover:bg-indigo-700 transition-colors">
             {showSchedule ? '收起场次' : '查看场次'}
           </button>
         </div>
@@ -160,7 +160,7 @@ export default function ActivityDetailPage() {
                               <span className="text-xs text-primary">¥</span>
                               <span className="text-xl font-bold text-primary">{session.price}</span>
                             </div>
-                            <button onClick={() => handleSelectSession(session)} className="px-6 py-2 bg-primary text-white rounded-full text-sm hover:bg-red-600 transition-colors">
+                            <button onClick={() => handleSelectSession(session)} className="px-6 py-2 bg-primary text-white rounded-full text-sm hover:bg-indigo-700 transition-colors">
                               选座购票
                             </button>
                           </div>

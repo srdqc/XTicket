@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { ArrowLeft, LoaderCircle, ShieldCheck, TicketCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
@@ -13,6 +13,13 @@ export default function CheckInPage() {
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<CheckInResult | null>(null)
   const [error, setError] = useState('')
+  const [access, setAccess] = useState<'loading' | 'allowed' | 'denied'>('loading')
+
+  useEffect(() => {
+    api.getUserInfo()
+      .then((response) => setAccess(response.code === 200 && response.data?.role === 'CHECKIN_STAFF' ? 'allowed' : 'denied'))
+      .catch(() => setAccess('denied'))
+  }, [])
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -38,6 +45,23 @@ export default function CheckInPage() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (access === 'loading') {
+    return <div className="min-h-screen flex items-center justify-center text-gray-400">正在校验工作人员权限...</div>
+  }
+
+  if (access === 'denied') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white border border-gray-200 rounded-lg p-10 text-center shadow-sm">
+          <ShieldCheck className="h-10 w-10 text-gray-300 mx-auto mb-4" />
+          <h1 className="text-lg font-medium text-gray-800">无核销权限</h1>
+          <p className="mt-2 text-sm text-gray-500">仅 CHECKIN_STAFF 角色可使用核销工作台。</p>
+          <button onClick={() => router.push('/')} className="mt-5 px-5 py-2 bg-primary text-white rounded-full text-sm">返回首页</button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -78,7 +102,7 @@ export default function CheckInPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="flex h-11 items-center justify-center gap-2 bg-primary px-4 font-medium text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-11 items-center justify-center gap-2 bg-primary px-4 font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <TicketCheck className="h-4 w-4" />}
               {submitting ? '核销中' : '确认核销'}

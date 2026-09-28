@@ -59,7 +59,7 @@ export default function LoginPage() {
           <button
             onClick={handleLogin}
             disabled={loading}
-            className="w-full py-3 bg-primary text-white rounded text-base disabled:opacity-60 hover:bg-red-600 transition-colors"
+            className="w-full py-3 bg-primary text-white rounded text-base disabled:opacity-60 hover:bg-indigo-700 transition-colors"
           >
             {loading ? '登录中...' : '登 录'}
           </button>

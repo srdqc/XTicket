@@ -52,7 +52,7 @@ export interface VenueFeatures {
   endorse?: boolean
   snack?: boolean
   vipTag?: string
-  hallTypes?: string[]
+  hallTypes?: string[] | string
 }
 
 export interface VenuePromotion {
@@ -76,7 +76,7 @@ export interface VenueDetail {
   endorse?: boolean
   snack?: boolean
   vipTag?: string
-  hallTypes?: string[]
+  hallTypes?: string[] | string
 }
 
 // ==================== 场次相关 ====================
@@ -152,8 +152,12 @@ export interface LockSeatsResponse {
 export interface OrderItem {
   id: number
   orderNo: string
-  movieName: string
-  cinemaName: string
+  activityName?: string
+  venueName?: string
+  activityCoverUrl?: string
+  /** Legacy aliases kept only for compatibility with old persisted/API payloads. */
+  movieName?: string
+  cinemaName?: string
   hallName: string
   showTime: string
   seatCount: number
@@ -168,6 +172,8 @@ export interface OrderItem {
   scheduleId: number
   movieImg?: string
 }
+
+export type UserRole = 'USER' | 'CHECKIN_STAFF'
 
 export interface CreateOrderRequest {
   scheduleId: number

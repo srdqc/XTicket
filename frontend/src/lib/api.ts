@@ -30,7 +30,7 @@ const api = {
   /** 城市列表 */
   getCities: () =>
     axios
-      .get('/dianying/cities.json')
+      .get('/api/cities')
       .then((res) => res.data),
 
   /** 搜索 */

@@ -8,10 +8,14 @@ import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import type { VenueItem } from '@/types'
 
-const BRAND_OPTIONS = ['全部', '万达', 'CGV', '星美', '金逸', '大地', '百老汇', '博纳', '中影', '横店', '耀莱成龙']
 const DISTRICT_OPTIONS = ['全部', '朝阳区', '海淀区', '东城区', '西城区', '丰台区', '通州区']
-const HALL_TYPE_OPTIONS = ['全部', 'IMAX厅', '杜比全景声厅', '4DX厅', '中国巨幕厅', '激光厅', '杜比厅']
+const HALL_TYPE_OPTIONS = ['全部', '主舞台', '多功能厅', '体育馆', '展厅', '剧场']
 const SERVICE_OPTIONS = ['全部', '可退票', '可改签']
+
+function normalizeHallTypes(value?: string[] | string): string[] {
+  if (Array.isArray(value)) return value
+  return value ? value.split(/[,、\s]+/).filter(Boolean) : []
+}
 
 function FilterRow({
   label,
@@ -53,7 +57,6 @@ export default function VenuesTab() {
   const { posId } = useHomeStore()
   const [venues, setVenues] = useState<VenueItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeBrand, setActiveBrand] = useState('全部')
   const [activeDistrict, setActiveDistrict] = useState('全部')
   const [activeHallType, setActiveHallType] = useState('全部')
   const [activeService, setActiveService] = useState('全部')
@@ -77,32 +80,24 @@ export default function VenuesTab() {
   /* ---- 前端过滤逻辑 ---- */
   const filteredVenues = useMemo(() => {
     return venues.filter((v) => {
-      // 品牌：场馆名包含品牌关键词
-      if (activeBrand !== '全部' && !v.name?.includes(activeBrand.replace('影城', '').replace('国际', ''))) return false
       // 行政区：地址包含区名
       if (activeDistrict !== '全部' && !v.address?.includes(activeDistrict)) return false
       // 会场类型：hallTypes 数组是否包含
       if (activeHallType !== '全部') {
-        const halls = v.features?.hallTypes || []
-        if (!halls.some((h) => h.includes(activeHallType.replace('厅', '').replace('场馆', '')))) return false
+        const halls = normalizeHallTypes(v.features?.hallTypes)
+        if (!halls.some((h) => h.includes(activeHallType))) return false
       }
       // 场馆服务
       if (activeService === '可退票' && !v.features?.allowRefund) return false
       if (activeService === '可改签' && !v.features?.endorse) return false
       return true
     })
-  }, [venues, activeBrand, activeDistrict, activeHallType, activeService])
+  }, [venues, activeDistrict, activeHallType, activeService])
 
   return (
     <div>
       {/* Filters */}
       <div className="border border-gray-200 bg-white p-5 mb-8 text-sm">
-        <FilterRow
-          label="品牌："
-          options={BRAND_OPTIONS}
-          active={activeBrand}
-          onSelect={setActiveBrand}
-        />
         <FilterRow
           label="行政区："
           options={DISTRICT_OPTIONS}
@@ -139,9 +134,8 @@ export default function VenuesTab() {
             const tags: { text: string; type: 'blue' | 'orange' }[] = []
             if (venue.features?.allowRefund) tags.push({ text: '退票', type: 'blue' })
             if (venue.features?.endorse) tags.push({ text: '改签', type: 'blue' })
-            if (venue.features?.snack) tags.push({ text: '小吃', type: 'orange' })
             if (venue.features?.vipTag) tags.push({ text: venue.features.vipTag, type: 'orange' })
-            venue.features?.hallTypes?.forEach((h) => tags.push({ text: h, type: 'blue' }))
+            normalizeHallTypes(venue.features?.hallTypes).forEach((h) => tags.push({ text: h, type: 'blue' }))
 
             return (
               <div
@@ -175,14 +169,9 @@ export default function VenuesTab() {
                   </div>
                 </div>
 
-                {/* Right: Price & Buy */}
+                {/* Right: Venue action */}
                 <div className="flex items-center space-x-6 text-right">
                   <div>
-                    <span className="text-xs text-primary">¥</span>
-                    <span className="text-lg font-bold text-primary mx-0.5">
-                      39
-                    </span>
-                    <span className="text-xs text-gray-400">起</span>
                     {venue.distance && (
                       <div className="text-xs text-gray-400 mt-1">
                         {venue.distance}
@@ -191,9 +180,9 @@ export default function VenuesTab() {
                   </div>
                   <button
                     onClick={() => router.push(`/venues/${venue.id}`)}
-                    className="px-5 py-1.5 bg-primary text-white rounded-full text-sm shadow-sm hover:bg-red-600 transition-colors"
+                    className="px-5 py-1.5 bg-primary text-white rounded-full text-sm shadow-sm hover:opacity-90 transition-colors"
                   >
-                    选座购票
+                    查看活动
                   </button>
                 </div>
               </div>
