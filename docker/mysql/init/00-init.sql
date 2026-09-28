@@ -288,6 +288,7 @@ CREATE TABLE IF NOT EXISTS seat_lock (
     UNIQUE INDEX idx_seat_lock_unique (schedule_id, row_num, col_num),
     INDEX idx_seat_lock_user (user_id, status),
     INDEX idx_seat_lock_token (lock_token),
+    INDEX idx_seat_lock_order (order_no),
     INDEX idx_seat_lock_expire (lock_until, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

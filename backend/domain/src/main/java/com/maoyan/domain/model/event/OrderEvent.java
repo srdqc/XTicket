@@ -29,12 +29,13 @@ public class OrderEvent implements Serializable {
     private Integer seatCount;
     private BigDecimal totalPrice;
     private long occurredAt;
+    private String traceId;
 
     public static OrderEvent create(Type type, String orderNo, Long userId, Long scheduleId,
                                     Integer seatCount, BigDecimal totalPrice) {
         return new OrderEvent(
                 UUID.randomUUID().toString(), 1, type, orderNo, userId, scheduleId,
-                null, null, seatCount, totalPrice, System.currentTimeMillis()
+                null, null, seatCount, totalPrice, System.currentTimeMillis(), null
         );
     }
 }

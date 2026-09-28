@@ -1,6 +1,15 @@
 server:
   port: 8080
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,ordercreateprofile,paymentprofile
+  endpoint:
+    health:
+      show-details: never
+
 spring:
   application:
     name: maoyan-backend
@@ -58,6 +67,8 @@ mybatis-plus:
 
 # ========== JWT ==========
 maoyan:
+  outbox:
+    publisher-concurrency: ${MAOYAN_OUTBOX_PUBLISHER_CONCURRENCY:2}
   jwt:
     secret: ${JWT_SECRET:change-me-to-a-random-256-bit-jwt-secret-at-least-32-chars}
     expire-hours: 72
@@ -72,7 +83,7 @@ logging:
     com.maoyan: DEBUG
     com.maoyan.dao: DEBUG
   pattern:
-    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level [traceId=%X{traceId:-}] %logger{36} - %msg%n"
 
 ---
 # ========== Docker Profile（MySQL + Redis + RocketMQ 全栈） ==========

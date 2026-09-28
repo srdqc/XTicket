@@ -15,6 +15,7 @@ import com.maoyan.domain.model.po.UserPO;
 import com.maoyan.domain.model.vo.OrderVO;
 import com.maoyan.service.infrastructure.DistributedLockService;
 import com.maoyan.service.event.OrderEventOutboxService;
+import com.maoyan.service.observability.BusinessMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -64,6 +65,8 @@ class PaymentServicePaymentRecordTest {
     private TicketService ticketService;
     @Mock
     private OrderEventOutboxService orderEventOutboxService;
+    @Mock
+    private BusinessMetrics businessMetrics;
 
     private PaymentService paymentService;
 
@@ -71,7 +74,7 @@ class PaymentServicePaymentRecordTest {
     void setUp() {
         paymentService = new PaymentService(orderMapper, seatLockMapper, orderSeatMapper,
                 paymentRecordMapper, userMapper, lockService, orderClosureService, ticketService,
-                orderEventOutboxService);
+                orderEventOutboxService, businessMetrics);
         when(lockService.<OrderVO>executeWithBoundedLock(anyString(), anyLong(), anyLong(), any()))
                 .thenAnswer(invocation -> {
                     @SuppressWarnings("unchecked")
@@ -114,6 +117,18 @@ class PaymentServicePaymentRecordTest {
         writes.verify(seatLockMapper).markAsPurchased(eq("MO_PAY_001"), any(LocalDateTime.class));
         writes.verify(paymentRecordMapper).insert(any(PaymentRecordPO.class));
         writes.verify(ticketService).issueTickets("MO_PAY_001");
+        verify(businessMetrics).paymentSuccess();
+        verify(businessMetrics).recordPaymentStage(eq("payment_idempotency"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_order_load"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_points_debit"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_order_transition"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_order_seat"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_order_seat_total"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_order_seat_insert"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_seat_lock_update"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_record_write"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_ticket_issue"), anyLong());
+        verify(businessMetrics).recordPaymentStage(eq("payment_outbox_insert"), anyLong());
     }
 
     @Test
@@ -129,6 +144,7 @@ class PaymentServicePaymentRecordTest {
         verify(paymentRecordMapper, never()).insert(any(PaymentRecordPO.class));
         verify(userMapper, never()).deductPoints(any(), anyInt());
         verify(ticketService, never()).issueTickets(anyString());
+        verify(businessMetrics, never()).paymentSuccess();
     }
 
     @Test

@@ -22,6 +22,7 @@ import com.maoyan.domain.model.vo.CheckInResult;
 import com.maoyan.domain.model.vo.RefundResult;
 import com.maoyan.service.infrastructure.StockService;
 import com.maoyan.service.event.OrderEventOutboxService;
+import com.maoyan.service.observability.BusinessMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -67,6 +68,7 @@ class RefundServiceTest {
     @Mock private ActivitySessionMapper activitySessionMapper;
     @Mock private StockService stockService;
     @Mock private OrderEventOutboxService orderEventOutboxService;
+    @Mock private BusinessMetrics businessMetrics;
 
     private RefundService refundService;
 
@@ -74,7 +76,7 @@ class RefundServiceTest {
     void setUp() {
         refundService = new RefundService(orderMapper, paymentRecordMapper, refundRecordMapper,
                 electronicTicketMapper, orderSeatMapper, seatLockMapper, userMapper,
-                activitySessionMapper, stockService, orderEventOutboxService);
+                activitySessionMapper, stockService, orderEventOutboxService, businessMetrics);
     }
 
     @Test
@@ -99,6 +101,7 @@ class RefundServiceTest {
         assertThat(record.getValue().getRefundNo()).startsWith("RF").hasSize(34);
         assertThat(record.getValue().getPaymentNo()).isEqualTo("PAY-1");
         assertThat(record.getValue().getStatus()).isEqualTo("SUCCESS");
+        verify(businessMetrics).refundSuccess();
     }
 
     @Test
@@ -118,6 +121,7 @@ class RefundServiceTest {
         verify(userMapper, never()).addPoints(any(), anyInt());
         verify(activitySessionMapper, never()).rollbackStock(any(), anyInt());
         verify(refundRecordMapper, never()).insert(any());
+        verify(businessMetrics, never()).refundSuccess();
     }
 
     @Test
@@ -262,7 +266,7 @@ class RefundServiceTest {
             result.setStatus(ticketStatus.get());
             return result;
         });
-        when(electronicTicketMapper.invalidateIssuedByOrderNo(eq(ORDER_NO), any(), anyInt(), anyInt()))
+        lenient().when(electronicTicketMapper.invalidateIssuedByOrderNo(eq(ORDER_NO), any(), anyInt(), anyInt()))
                 .thenAnswer(invocation -> {
                     try {
                         return ticketStatus.compareAndSet(TicketStatusEnum.ISSUED.getCode(),
@@ -283,7 +287,7 @@ class RefundServiceTest {
         lenient().when(activitySessionMapper.rollbackStock(40L, 1)).thenReturn(1);
 
         CyclicBarrier barrier = new CyclicBarrier(2);
-        CheckInService checkInService = new CheckInService(userMapper, electronicTicketMapper);
+        CheckInService checkInService = new CheckInService(userMapper, electronicTicketMapper, businessMetrics);
         CompletableFuture<Boolean> refund = CompletableFuture.supplyAsync(() -> {
             await(barrier);
             try {

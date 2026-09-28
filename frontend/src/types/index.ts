@@ -120,6 +120,22 @@ export interface SeatLayoutData {
   seats: SeatInfo[][]
 }
 
+export interface CompactSeatLayoutData {
+  sessionId: number
+  hallName: string
+  hallType: string
+  layout: {
+    rows: number
+    cols: number
+    aisles: number[]
+    coupleRows: number[]
+    disabled: number[]
+  }
+  sold: number[]
+  locked: number[]
+  myLocked: number[]
+}
+
 export interface LockSeatsRequest {
   scheduleId: number
   seats: { row: number; col: number }[]

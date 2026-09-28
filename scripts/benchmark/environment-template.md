@@ -1,0 +1,25 @@
+# Benchmark Environment
+
+- Date/time:
+- Scenario:
+- Git commit:
+- Dirty worktree: yes/no
+- CPU model:
+- Logical cores:
+- Host RAM:
+- Windows version/build:
+- Docker Desktop/Engine version:
+- Docker CPU allocation:
+- Docker memory allocation:
+- JDK version:
+- k6 version:
+- Client/server same host: yes/no
+- Backend instances:
+- Backend container CPU/memory limit:
+- MySQL image/config/data size:
+- Redis image/maxmemory/policy:
+- RocketMQ version:
+- Hikari min/max/timeout:
+- Session IDs:
+- Users/session/seats fixture:
+- Notes on competing host processes:

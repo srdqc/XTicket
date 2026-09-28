@@ -112,6 +112,9 @@ services:
     container_name: maoyan-backend
     restart: unless-stopped
     environment:
+      MAOYAN_PROFILING_ORDER_CREATE_ENABLED: ${MAOYAN_PROFILING_ORDER_CREATE_ENABLED:-false}
+      MAOYAN_PROFILING_PAYMENT_ENABLED: ${MAOYAN_PROFILING_PAYMENT_ENABLED:-false}
+      MAOYAN_OUTBOX_PUBLISHER_CONCURRENCY: ${MAOYAN_OUTBOX_PUBLISHER_CONCURRENCY:-2}
       SPRING_PROFILES_ACTIVE: docker
       TZ: Asia/Shanghai
       MYSQL_HOST: mysql

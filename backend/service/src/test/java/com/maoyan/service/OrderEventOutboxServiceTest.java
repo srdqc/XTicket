@@ -3,6 +3,7 @@ package com.maoyan.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.maoyan.common.constants.MQConstants;
+import com.maoyan.common.observability.TraceContext;
 import com.maoyan.dao.mapper.OutboxEventMapper;
 import com.maoyan.domain.model.event.OrderEvent;
 import com.maoyan.domain.model.po.OrderPO;
@@ -36,7 +37,12 @@ class OrderEventOutboxServiceTest {
         order.setSeatCount(2);
         order.setTotalPrice(new BigDecimal("130.00"));
 
-        service.append(OrderEvent.Type.PAID, order);
+        TraceContext.setOrGenerate("phase6a-outbox-trace");
+        try {
+            service.append(OrderEvent.Type.PAID, order);
+        } finally {
+            TraceContext.clear();
+        }
 
         ArgumentCaptor<OutboxEventPO> captor = ArgumentCaptor.forClass(OutboxEventPO.class);
         verify(outboxEventMapper).insert(captor.capture());
@@ -56,5 +62,6 @@ class OrderEventOutboxServiceTest {
         assertThat(payload.get("type").asText()).isEqualTo("PAID");
         assertThat(payload.get("orderNo").asText()).isEqualTo("MO-OUTBOX-1");
         assertThat(payload.get("occurredAt").asLong()).isPositive();
+        assertThat(payload.get("traceId").asText()).isEqualTo("phase6a-outbox-trace");
     }
 }

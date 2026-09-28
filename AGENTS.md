@@ -247,3 +247,18 @@ backend 已 build 且之后没有 Java/配置变化，
 - 单命令成功总结
 
 阶段节点之外直接继续执行。
+
+## 15. Benchmark execution
+
+1. Prefer one benchmark harness command over multiple manual commands.
+2. Benchmark scripts must emit one compact machine-readable summary.
+3. Redirect raw k6, MySQL, Docker and metrics output to files.
+4. Do not print full logs on success.
+5. On success, read only the generated summary.
+6. On failure, inspect only the failing stage and relevant log tail.
+7. Do not repeatedly poll benchmark progress unless required.
+8. Do not manually calculate metrics that scripts can calculate.
+9. Quick diagnostics must pass before formal runs.
+10. Formal benchmarks run only once after the optimization is frozen.
+11. Do not rerun a successful benchmark because report generation failed.
+12. Prefer user-executed formal benchmarks when agent execution is not required.

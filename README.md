@@ -1,175 +1,188 @@
-# 高校综合活动平台——C端票务交易与履约服务
+# XTicket
 
-面向高校综合活动运营，作为统一活动平台中的 C 端票务子模块，服务于学术会议及分会场、校园演出和大型晚会、体育赛事、对外开放讲座、校内培训与场馆活动等业务。
+XTicket 是面向固定座位活动的 C 端综合票务交易与履约服务，覆盖锁座、建单、模拟支付、电子票、核销与退款完整链路。后端采用 Spring Boot Maven 多模块单体，前端采用 Next.js；项目重点解决并发锁座、防超卖、交易一致性、可靠事件发布和可复现性能验证。
 
-> 当前代码仍保留电影票务系统的领域命名和部分页面文案，例如 `movie`、`cinema`、`movie_schedule`、`wish`。本轮只重构文档，代码领域模型将在后续改造阶段处理。
+## 技术栈
 
-## 1. 项目定位
+| 领域 | 技术 |
+| --- | --- |
+| 后端 | Java 17、Spring Boot 3.2、MyBatis / MyBatis-Plus、Maven 多模块 |
+| 数据与并发 | MySQL 8、Redis 7、Redisson、Caffeine |
+| 消息 | RocketMQ 5、Transactional Outbox |
+| 前端 | Next.js 14、React 18、TypeScript、Tailwind CSS、Zustand、Axios |
+| 网关与运行 | Nginx、Docker Compose |
+| 可观测性 | Spring Boot Actuator、Micrometer、traceId |
 
-本项目当前可验证的核心是 C 端票务交易链路：活动/场次浏览、座位图查询、座位锁定、创建待支付订单、积分模拟支付、超时关单、资源释放和用户关注。完整履约能力如电子票、核销、退款、运营后台仍处于规划中，不能作为当前成果描述。
+## 系统架构
 
-## 2. 目标业务流程
-
-| 流程节点 | 状态 | 说明 |
-| -- | -- | -- |
-| 活动及场次浏览 | 已实现 | 由现有 `movie`、`cinema`、`movie_schedule` 查询能力承载 |
-| 票档或座位选择 | 部分实现 | 已实现固定座位选择；未实现票档管理 |
-| 座位暂占 | 已实现 | `seat_lock` 表 + Redisson 场次级锁，15 分钟过期 |
-| 创建待支付订单 | 已实现 | 写 `ticket_order`，绑定锁座 token，扣减库存 |
-| 模拟支付或预约确认 | 已实现 | 当前为积分扣减式 Mock 支付 |
-| 超时关单和资源释放 | 已实现 | 定时扫描 + 支付入口懒过期，释放 DB/Redis 库存和锁座 |
-| 电子票生成 | 规划中 | 当前无电子票表、实体或生成逻辑 |
-| 入场核销 | 规划中 | 当前无核销码、二维码和核销接口 |
-| 用户取消与退款 | 部分实现 | 已支持用户取消待支付订单；退款申请和退款状态机未实现 |
-| 消息通知 | 规划中 | 当前只有 RocketMQ 订单事件扩展点，没有真实通知通道 |
-| 运营统计 | 规划中 | 当前无统计接口、指标或报表 |
-
-## 3. 当前代码实现范围
-
-- C 端浏览：活动/电影列表、场馆/影院列表、场次、座位图、搜索、城市。
-- C 端交易：锁座、建待支付订单、积分支付、订单列表、订单详情、用户取消待支付订单。
-- 一致性控制：Redisson 场次级/订单级有界锁、`seat_lock` 和 `order_seat` 唯一索引、Redis Lua 库存预扣/回滚、MySQL 乐观锁扣减库存、订单状态 CAS。
-- 缓存与限流：Caffeine + Redis Cache-Aside，`@RateLimit` + AOP + Redis Lua 滑动窗口/令牌桶。
-- MQ：RocketMQ 订单事件、想看写回、可选锁座缓冲。
-
-## 4. 当前真实交易链路
-
-```text
-查询活动/场次
-  -> GET /api/seat/layout 查询座位图
-  -> POST /api/seat/lock 同步锁座，返回 lockToken
-  -> POST /api/order/create 创建待支付订单
-     -> Redis schedule:stock:{scheduleId} Lua 预扣
-     -> MySQL movie_schedule 乐观锁扣库存
-     -> ticket_order 插入订单
-     -> seat_lock 绑定 order_no
-  -> POST /api/payment/pay?orderNo= 积分支付
-     -> sys_user 条件扣积分
-     -> ticket_order status 0 -> 1
-     -> order_seat 写已售座位
-     -> seat_lock status 1 -> 2
-  -> 超时或用户取消
-     -> ticket_order status 0 -> 2
-     -> 回滚 DB/Redis 库存
-     -> 删除仍处于锁定中的 seat_lock
+```mermaid
+flowchart LR
+    Client[Web Client] --> Nginx
+    Nginx --> Frontend[Next.js Frontend]
+    Nginx --> Backend[Spring Boot Modular Monolith]
+    Frontend --> Backend
+    Backend --> MySQL[(MySQL)]
+    Backend --> Redis[(Redis / Redisson)]
+    Backend --> RocketMQ[RocketMQ]
+    RocketMQ --> Backend
 ```
 
-注意：当前没有 Redis Lua 单座锁座、Waiting Room、Outbox、RocketMQ 延迟关单、支付流水、电子票或核销。
+项目是模块化单体，不包含注册中心、配置中心、微服务网关、Redis Cluster 或 MySQL 主从架构。
 
-## 5. 技术架构
+## 核心业务
 
-| 层级 | 技术 |
-| -- | -- |
-| 前端 | Next.js 14、React 18、TypeScript、Tailwind CSS、Zustand、Axios |
-| 后端 | Spring Boot 3.2、Java 17 源码目标、Maven 多模块单体、MyBatis-Plus |
-| 数据库 | 本地 H2；Docker profile 使用 MySQL 8 |
-| 缓存/锁 | Caffeine、Redis、Redisson |
-| 消息队列 | RocketMQ |
-| 部署 | Docker Compose、Nginx |
+```text
+浏览活动与场次
+  → 查询固定座位图
+  → 锁定座位并获得 lockToken
+  → 创建待支付订单
+  → MOCK_POINTS 积分支付
+  → 幂等签发电子票
+  → 入场核销，或退款并使电子票失效、释放座位与库存
+```
 
-未使用：RabbitMQ、Dubbo、Sentinel、Guava RateLimiter、Seata、微服务拆分、分库分表。
+- **锁座**：校验座位请求，以细粒度 seat / seat-set 分布式锁保护同座竞争。
+- **建单**：校验锁座归属和 lockToken，写入订单快照并扣减 Redis、MySQL 库存。
+- **支付与出票**：订单状态 CAS、积分条件扣减、支付流水和电子票在本地事务中落库。
+- **核销**：电子票 `ISSUED → USED` 条件更新，重复核销幂等返回。
+- **退款**：已支付订单退款后返还积分、恢复库存，使电子票 `ISSUED → INVALIDATED`，座位可再次销售。
 
-## 6. 数据一致性边界
+## 核心设计
 
-- DB 是最终权威：座位唯一性最终由 `seat_lock(schedule_id,row_num,col_num)` 和 `order_seat(schedule_id,row_num,col_num)` 约束兜底，库存最终由 `movie_schedule.available_seats` 和 `version` 控制。
-- Redis 的真实职责：用于库存预扣、库存展示、缓存、限流和想看计数；它不是交易最终权威。
-- 分布式锁的真实职责：降低同场次锁座/建单、同订单支付的并发冲突；锁失效时仍依赖 DB 约束兜底。
-- MQ 的真实职责：订单事件扩展通知、想看异步写回、可选锁座缓冲；MQ 不参与最终支付状态和库存决策。
-- 当前补偿方式：Redis 库存回滚失败会尝试写 `stock:dirty:rollback`，`ScheduleService.reconcileStock()` 每 5 分钟处理脏标并用 DB 库存覆盖 Redis。
+### 高并发锁座与防超卖
 
-## 7. 目标业务与旧代码概念映射
+- 使用确定性排序的 seat / seat-set Redisson 锁，提高同场次不同座位的并发度并规避多座位锁顺序死锁。
+- Redis Lua 原子检查并预扣场次库存，失败时执行补偿或记录待对账标记。
+- MySQL 使用带库存下限条件的原子扣减，防止 lost update 和库存变负。
+- `seat_lock`、`order_seat` 等唯一约束作为重复售座的最终数据库兜底。
+- 超时关单和取消流程释放仍有效的锁座，并恢复数据库及 Redis 库存。
 
-| 当前代码概念 | 目标业务概念 |
-| -- | -- |
-| `movie` | 活动 |
-| `cinema` | 场馆 |
-| `hall` | 会场/场地 |
-| `movie_schedule` | 活动场次 |
-| `order_seat` | 已出票/已确认座位 |
-| `wish` | 活动关注/感兴趣 |
+### 交易一致性
 
-当前代码仍保留原电影票务领域命名，后续代码改造阶段再进行领域模型重命名。
+- 建单、支付、退款和核销以 MySQL 本地事务与状态 CAS 保证关键状态转换。
+- 订单保存活动、场馆、场次、座位和价格快照，避免基础信息变化污染历史订单。
+- 支付记录保留成功事实；退款使用独立退款记录，不覆盖支付历史。
+- 电子票状态机为 `ISSUED / USED / INVALIDATED`，退款与核销并发最终由数据库条件更新约束。
 
-## 8. 已知限制
+### Transactional Outbox
 
-- 电子票、核销码、二维码、入场核销、重复核销幂等未实现。
-- 退款申请、退款状态机、支付流水、第三方支付回调未实现。
-- 活动管理后台、场馆管理、场次管理、票档管理、库存人工校正、运营查询未实现。
-- 请求级 `idempotencyKey` 未实现，建单重复提交主要依赖锁座、库存和状态约束兜底。
-- RocketMQ 没有 Outbox、事务消息、完整消费幂等表、死信补偿后台。
-- 多级缓存没有真正 singleflight，也没有空值缓存。
-- 无自动化测试、压测脚本、真实 QPS/P95/P99 数据、traceId 和 Micrometer 指标。
+业务数据和领域事件在同一个本地事务中写入 MySQL。后台 publisher 通过 CAS claim 获取事件，以固定有界并发发送到 RocketMQ，成功后标记 `PUBLISHED`；失败事件保留稳定 eventId 并按既有退避语义重试，超时的 `PROCESSING` 事件可恢复。消费者通过 `(consumer_group, event_id)` 唯一键实现幂等。
 
-## 9. 运行方式
+该链路提供 **at-least-once delivery + idempotent consumer**，不声称 exactly-once。
 
-本地开发默认使用 H2 内存数据库，不依赖 MySQL、Redis、RocketMQ，适合先看基础功能。默认配置排除了 Redis/Redisson 自动配置，相关能力会降级到 DB 或直接放行。
+### 电子票履约
 
-### 启动后端
+- 支付成功后按已售座位幂等签发电子票。
+- 工作人员核销接口仅允许 `CHECKIN_STAFF` 等授权角色访问。
+- 首次核销执行 `ISSUED → USED`；重复请求不会重复产生副作用。
+- 已核销票拒绝退款；退款成功将未使用票置为 `INVALIDATED`，失效票不能核销。
+
+## 性能优化
+
+| 场景 | 本地可复现结果 |
+| --- | --- |
+| 20,000 座位 Seat Layout | P95 `923.329 ms → 35.739 ms` |
+| Payment `seat_lock` UPDATE | P95 `117.408 ms → 1.688 ms` |
+| Full Transaction | TPS 中位数 `93.233` |
+| Full Transaction | P95 `513 ms`，P99 `661.03 ms` |
+| 正确性 Gate | `0` 超卖、`0` timeout、`0` deadlock |
+| Outbox Gate | Formal 三轮在 120 秒检查点 backlog 均为 `0` |
+
+Full Transaction 正式测试采用 25 VU、30 秒 warmup、60 秒 measurement，并使用三轮中位数。以上数据均来自固定本地环境中的可复现 Benchmark，用于版本间优化对比，**不代表生产容量或 SLA**。
+
+详细证据：
+
+- [20k 座位图紧凑协议](scripts/benchmark/results/seat-layout-compact-summary.md)
+- [`seat_lock.order_no` 索引实验](scripts/benchmark/results/payment-seat-lock-order-index-summary.md)
+- [Outbox 有界并发实验](scripts/benchmark/results/outbox-bounded-concurrency-summary.md)
+
+## Benchmark
+
+[`scripts/benchmark/`](scripts/benchmark/) 提供固定 fixture、warmup/measurement 分离、k6 workload、服务端指标采样、MySQL 锁等待采样、三轮中位数和正确性/Outbox Gate。原始 k6、metrics、MySQL 与 Docker 输出保存在被忽略的运行目录中，仓库仅保留少量最终 Markdown 摘要。
+
+需要 Docker 服务、Windows PowerShell 5.1 和 k6。先执行 Quick，只有 Quick PASS 后才能执行 Formal：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\benchmark\run-phase6c-8.ps1 -Mode Quick
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\benchmark\run-phase6c-8.ps1 -Mode Formal
+```
+
+更多 fixture、场景和指标口径见 [Benchmark README](scripts/benchmark/README.md)。
+
+## 快速开始
+
+### 环境要求
+
+- JDK 17
+- Node.js 18.17+ 与 npm
+- Docker Desktop / Docker Compose
+- Windows PowerShell 5.1（运行现有验收及 Benchmark 脚本时）
+
+### Docker 全栈启动
+
+复制公开配置模板，并为本地环境设置真实密码和 JWT secret：
+
+```powershell
+Copy-Item .env.example .env
+cd backend
+.\mvnw.cmd -q clean package
+cd ..
+docker compose up -d --build
+```
+
+MySQL 初始化 DDL 由 `docker/mysql/init/` 自动挂载执行。确认后端健康状态：
+
+```powershell
+docker compose exec -T backend wget -qO- http://127.0.0.1:8080/actuator/health
+```
+
+Nginx 默认入口为 `http://localhost`。
+
+### 分别启动后端与前端
+
+后端默认使用 H2 内存数据库，适合本地浏览基础功能：
 
 ```powershell
 cd backend
 .\mvnw.cmd -pl provider -am spring-boot:run
 ```
 
-后端默认地址：
-
-```text
-http://localhost:8080
-```
-
-H2 控制台：
-
-```text
-http://localhost:8080/h2-console
-JDBC URL: jdbc:h2:mem:maoyan
-User: sa
-Password: 留空
-```
-
-### 启动前端
+另一个终端启动前端：
 
 ```powershell
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-前端默认地址：
+前端开发地址为 `http://localhost:3000`，API 由 Next.js rewrites 转发到 `http://localhost:8080`。
+
+## 项目结构
 
 ```text
-http://localhost:3000
+backend/
+  common/       公共常量、JWT、可观测性上下文
+  domain/       DTO、VO、PO、事件与状态枚举
+  dao/          MyBatis / MyBatis-Plus 数据访问
+  service/      交易、履约、缓存、锁、Outbox 与 MQ 消费
+  biz/          业务编排
+  provider/     Controller、应用入口和运行配置
+frontend/       Next.js C 端页面
+docker/         MySQL、Nginx、RocketMQ 配置
+scripts/        API 验收和可复现 Benchmark
 ```
 
-前端会通过 Next.js rewrites 把 `/ajax`、`/api`、`/dianying` 代理到 `http://localhost:8080`。
+## 项目边界
 
-### Docker Compose 启动
+- 支付方式为 `MOCK_POINTS` 积分模拟支付，未接入真实第三方支付、支付回调或退款渠道。
+- 当前形态是 Spring Boot Maven 多模块单体，不是微服务系统。
+- Benchmark 在 client/server 同机的本地 Docker 环境运行，只用于回归和优化前后对比。
+- 项目未声明生产级容量、可用性或 SLA。
 
-Docker 模式会启动 MySQL、Redis、RocketMQ、后端、前端、Nginx。
+## Development Notice
 
-```powershell
-Copy-Item .env.example .env
-```
+本项目在已有学习项目基础上，经原开发者授权进行公开二次开发与工程化重构。当前版本主要完成了固定座位活动领域迁移、细粒度并发锁座、库存一致性、电子票/核销/退款履约、Transactional Outbox、运行时可观测性、可复现 Benchmark 与针对性性能优化。仓库中未确认可公开引用的原项目 URL，因此不编造来源链接；授权证据由维护者线下保存。
 
-修改 `.env` 里的密码和 `JWT_SECRET` 后，先打包后端 JAR：
+## License
 
-```powershell
-cd backend
-.\mvnw.cmd -q -DskipTests package
-cd ..
-```
-
-启动全栈：
-
-```powershell
-docker compose up -d --build
-```
-
-默认 Nginx 地址：
-
-```text
-http://localhost
-```
-
-## 10. 许可证
-
-仅用于学习、课程设计、面试展示。正式商用前请自行补充许可证、合规声明和安全审计。保留仓库现有 LICENSE、版权或署名声明；不得删除许可证要求的法律声明。
+This repository is published for learning, portfolio and interview demonstration. No project-level open-source license is granted by this repository.

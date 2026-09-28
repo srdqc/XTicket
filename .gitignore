@@ -48,3 +48,16 @@ upload/
 META-INF/
 docs/
 .codex/
+AGENTS.md
+
+# Benchmark runtime secrets and raw output
+scripts/benchmark/results/raw/
+scripts/benchmark/results/phase6c-8-*/
+
+# Keep only selected public benchmark summaries; retain other reports locally.
+scripts/benchmark/results/*.md
+!scripts/benchmark/results/baseline-summary.md
+!scripts/benchmark/results/seat-layout-compact-summary.md
+!scripts/benchmark/results/payment-seat-lock-order-index-summary.md
+!scripts/benchmark/results/outbox-bounded-concurrency-summary.md
+!scripts/benchmark/results/summary-template.md

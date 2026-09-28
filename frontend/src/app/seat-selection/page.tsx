@@ -6,6 +6,7 @@ import { ArrowLeft, Monitor, Coins } from 'lucide-react'
 import { toast } from 'sonner'
 import Loading from '@/components/Loading'
 import api from '@/lib/api'
+import { expandCompactSeatLayout } from '@/lib/seat-layout'
 import { imgUrlReplace } from '@/lib/utils'
 import { useUserStore } from '@/store/user'
 import type { SeatInfo, SeatLayoutData } from '@/types'
@@ -33,11 +34,11 @@ function SeatSelectionContent() {
       try {
         // 并行加载座位布局和活动详情
         const [layoutRes, activityRes] = await Promise.all([
-          api.getSeatLayout({ scheduleId: Number(scheduleId) }),
+          api.getCompactSeatLayout({ scheduleId: Number(scheduleId) }),
           activityId ? api.getActivityDetail(activityId) : null,
         ])
 
-        setLayout(layoutRes.data || layoutRes)
+        setLayout(expandCompactSeatLayout(layoutRes.data || layoutRes))
         if (activityRes) setMovieDetail(activityRes.data)
 
         // 加载场次信息（按 sessionId == scheduleId 匹配）

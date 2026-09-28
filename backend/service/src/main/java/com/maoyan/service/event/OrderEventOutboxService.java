@@ -3,6 +3,7 @@ package com.maoyan.service.event;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.maoyan.common.constants.MQConstants;
+import com.maoyan.common.observability.TraceContext;
 import com.maoyan.dao.mapper.OutboxEventMapper;
 import com.maoyan.domain.model.event.OrderEvent;
 import com.maoyan.domain.model.po.OrderPO;
@@ -22,6 +23,8 @@ public class OrderEventOutboxService {
     public void append(OrderEvent.Type type, OrderPO order) {
         OrderEvent event = OrderEvent.create(type, order.getOrderNo(), order.getUserId(),
                 order.getScheduleId(), order.getSeatCount(), order.getTotalPrice());
+        String traceId = TraceContext.currentTraceId();
+        event.setTraceId(TraceContext.isValid(traceId) ? traceId : null);
         LocalDateTime now = LocalDateTime.now();
         OutboxEventPO record = new OutboxEventPO();
         record.setEventId(event.getEventId());

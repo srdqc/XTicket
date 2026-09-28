@@ -6,8 +6,11 @@ import com.maoyan.dao.mapper.ActivitySessionMapper;
 import com.maoyan.dao.mapper.SeatLockMapper;
 import com.maoyan.domain.model.po.OrderPO;
 import com.maoyan.service.infrastructure.DistributedLockService;
+import com.maoyan.service.infrastructure.SeatLockClaimService;
 import com.maoyan.service.infrastructure.StockService;
 import com.maoyan.service.event.OrderEventOutboxService;
+import com.maoyan.service.observability.BusinessMetrics;
+import com.maoyan.common.observability.TraceContext;
 import org.apache.ibatis.annotations.Select;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,11 +45,15 @@ class OrderExpiredScanTest {
     @Mock
     private DistributedLockService lockService;
     @Mock
+    private SeatLockClaimService seatLockClaimService;
+    @Mock
     private PlatformTransactionManager transactionManager;
     @Mock
     private OrderClosureService orderClosureService;
     @Mock
     private OrderEventOutboxService orderEventOutboxService;
+    @Mock
+    private BusinessMetrics businessMetrics;
 
     @Test
     void expiredOrderScanSqlKeepsPendingExpiredDeletedAndLimitPredicates() throws Exception {
@@ -69,7 +76,8 @@ class OrderExpiredScanTest {
     @Test
     void schedulerScansAtMostOneHundredExpiredPendingOrders() {
         OrderService orderService = new OrderService(orderMapper, activitySessionMapper, seatLockMapper, orderSeatMapper,
-                stockService, lockService, transactionManager, orderClosureService, orderEventOutboxService);
+                stockService, lockService, seatLockClaimService, transactionManager, orderClosureService, orderEventOutboxService,
+                businessMetrics);
         OrderPO order = new OrderPO();
         order.setOrderNo("MO_EXPIRED_001");
         when(orderMapper.selectExpiredPendingOrders(any(LocalDateTime.class), eq(100)))
@@ -79,12 +87,14 @@ class OrderExpiredScanTest {
 
         verify(orderMapper).selectExpiredPendingOrders(any(LocalDateTime.class), eq(100));
         verify(orderClosureService).closeExpiredOrder("MO_EXPIRED_001", "TIMEOUT_SCHEDULER");
+        assertThat(TraceContext.currentTraceId()).isNull();
     }
 
     @Test
     void schedulerDoesNothingWhenNoExpiredPendingOrdersFound() {
         OrderService orderService = new OrderService(orderMapper, activitySessionMapper, seatLockMapper, orderSeatMapper,
-                stockService, lockService, transactionManager, orderClosureService, orderEventOutboxService);
+                stockService, lockService, seatLockClaimService, transactionManager, orderClosureService, orderEventOutboxService,
+                businessMetrics);
         when(orderMapper.selectExpiredPendingOrders(any(LocalDateTime.class), eq(100))).thenReturn(List.of());
 
         orderService.cancelExpiredOrders();
