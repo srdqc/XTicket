@@ -1,29 +1,29 @@
 -- =====================================================
--- 猫眼后端 - 数据库表结构 (H2 MySQL 兼容模式)
+-- XTicket - 数据库表结构 (H2 MySQL 兼容模式)
 -- =====================================================
 
 -- 活动表（Phase 3A 底层事实源，部分电影兼容字段暂留）
 CREATE TABLE IF NOT EXISTS activity (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-    nm              VARCHAR(200)  NOT NULL        COMMENT '电影名',
+    nm              VARCHAR(200)  NOT NULL        COMMENT '活动名称',
     enm             VARCHAR(200)                  COMMENT '英文名',
-    img             VARCHAR(500)                  COMMENT '海报URL',
-    sc              DECIMAL(3,1)  DEFAULT 0       COMMENT '评分',
-    star            VARCHAR(500)                  COMMENT '演员',
+    img             VARCHAR(500)                  COMMENT '活动封面URL',
+    sc              DECIMAL(3,1)  DEFAULT 0       COMMENT '热度/评分',
+    star            VARCHAR(500)                  COMMENT '嘉宾/参赛方',
     cat             VARCHAR(200)                  COMMENT '分类标签',
-    src             VARCHAR(200)                  COMMENT '来源/国家',
+    src             VARCHAR(200)                  COMMENT '举办地/来源',
     dur             INT                           COMMENT '时长(分钟)',
-    pub_desc        VARCHAR(200)                  COMMENT '上映描述',
-    dra             TEXT                          COMMENT '剧情简介',
-    wish            INT           DEFAULT 0       COMMENT '想看人数',
-    vd              VARCHAR(500)                  COMMENT '预告片URL',
-    photos          TEXT                          COMMENT '剧照JSON数组',
-    pn              INT           DEFAULT 0       COMMENT '剧照总数',
-    show_info       VARCHAR(200)                  COMMENT '上映信息',
-    coming_title    VARCHAR(100)                  COMMENT '即将上映标题',
-    movie_status    INT           DEFAULT 0       COMMENT '0=即将上映,1=正在热映,2=已下映',
-    global_released INT           DEFAULT 0       COMMENT '是否已上映:0=否,1=是',
-    release_year    INT           DEFAULT 2026    COMMENT '上映年份',
+    pub_desc        VARCHAR(200)                  COMMENT '举办/开售信息',
+    dra             TEXT                          COMMENT '活动简介',
+    wish            INT           DEFAULT 0       COMMENT '关注人数',
+    vd              VARCHAR(500)                  COMMENT '宣传视频URL',
+    photos          TEXT                          COMMENT '活动图片JSON数组',
+    pn              INT           DEFAULT 0       COMMENT '活动图片总数',
+    show_info       VARCHAR(200)                  COMMENT '场次/余票信息',
+    coming_title    VARCHAR(100)                  COMMENT '开售/举办标题',
+    movie_status    INT           DEFAULT 0       COMMENT '0=即将开售,1=售票中,2=已结束',
+    global_released INT           DEFAULT 0       COMMENT '是否已开售:0=否,1=是',
+    release_year    INT           DEFAULT 2026    COMMENT '活动年份',
     sort_order      INT           DEFAULT 0       COMMENT '排序权重',
     version         INT           DEFAULT 0       COMMENT '乐观锁版本号',
     create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS city (
 -- 场馆表（Phase 3A 底层事实源，部分影院兼容字段暂留）
 CREATE TABLE IF NOT EXISTS venue (
     id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
-    nm                  VARCHAR(200) NOT NULL  COMMENT '影院名称',
+    nm                  VARCHAR(200) NOT NULL  COMMENT '场馆名称',
     addr                VARCHAR(500)           COMMENT '地址',
     city_id             BIGINT       NOT NULL  COMMENT '城市ID',
     brand_id            BIGINT                 COMMENT '品牌ID',
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS venue (
     distance            VARCHAR(50)            COMMENT '距离描述',
     allow_refund        INT DEFAULT 0          COMMENT '可退票',
     endorse             INT DEFAULT 0          COMMENT '可改签',
-    snack               INT DEFAULT 0          COMMENT '有小吃',
+    snack               INT DEFAULT 0          COMMENT '兼容服务标记',
     vip_tag             VARCHAR(100)           COMMENT 'VIP标签',
     hall_types_json     VARCHAR(500)           COMMENT '厅型JSON数组',
     card_promotion_tag  VARCHAR(200)           COMMENT '促销标签',
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS venue (
     deleted             INT DEFAULT 0
 );
 
--- 影院品牌表
+-- 场馆运营方表（历史表名保留兼容）
 CREATE TABLE IF NOT EXISTS cinema_brand (
     id    BIGINT AUTO_INCREMENT PRIMARY KEY,
     name  VARCHAR(100) NOT NULL,
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS service_type (
     count INT DEFAULT 0
 );
 
--- 影厅类型表
+-- 会场类型表
 CREATE TABLE IF NOT EXISTS hall_type (
     id    BIGINT AUTO_INCREMENT PRIMARY KEY,
     name  VARCHAR(100) NOT NULL,
@@ -132,11 +132,11 @@ CREATE TABLE IF NOT EXISTS activity_session (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     activity_id     BIGINT        NOT NULL      COMMENT '关联活动',
     venue_id        BIGINT        NOT NULL      COMMENT '关联场馆',
-    hall_name       VARCHAR(50)                 COMMENT '影厅名称',
-    show_date       DATE          NOT NULL      COMMENT '放映日期',
-    show_time       VARCHAR(10)   NOT NULL      COMMENT '放映时间 HH:mm',
-    end_time        VARCHAR(10)                 COMMENT '散场时间 HH:mm',
-    lang            VARCHAR(30)   DEFAULT '国语' COMMENT '语言版本',
+    hall_name       VARCHAR(50)                 COMMENT '会场名称',
+    show_date       DATE          NOT NULL      COMMENT '举办日期',
+    show_time       VARCHAR(10)   NOT NULL      COMMENT '开始时间 HH:mm',
+    end_time        VARCHAR(10)                 COMMENT '结束时间 HH:mm',
+    lang            VARCHAR(30)   DEFAULT '国语' COMMENT '语言/演出形式',
     total_seats     INT           NOT NULL DEFAULT 120 COMMENT '总座位数',
     available_seats INT           NOT NULL DEFAULT 120 COMMENT '剩余可售座位',
     price           DECIMAL(10,2) NOT NULL DEFAULT 39.90 COMMENT '单价',
@@ -154,10 +154,10 @@ CREATE TABLE IF NOT EXISTS ticket_order (
     user_id         BIGINT        NOT NULL      COMMENT '用户ID',
     schedule_id     BIGINT        NOT NULL      COMMENT '场次ID',
     lock_token      VARCHAR(64)   NOT NULL      COMMENT '锁座令牌',
-    movie_name      VARCHAR(200)                COMMENT '电影名（冗余）',
-    cinema_name     VARCHAR(200)                COMMENT '影院名（冗余）',
-    hall_name       VARCHAR(50)                 COMMENT '厅名（冗余）',
-    show_time       VARCHAR(30)                 COMMENT '放映时间（冗余）',
+    movie_name      VARCHAR(200)                COMMENT '活动名称快照（历史列名）',
+    cinema_name     VARCHAR(200)                COMMENT '场馆名称快照（历史列名）',
+    hall_name       VARCHAR(50)                 COMMENT '会场名称快照',
+    show_time       VARCHAR(30)                 COMMENT '举办时间快照',
     seat_count      INT           NOT NULL DEFAULT 1 COMMENT '座位数',
     seats_info      VARCHAR(500)                COMMENT '座位信息(如:5排3座,5排4座)',
     unit_price      DECIMAL(10,2)               COMMENT '单价',
@@ -238,13 +238,13 @@ CREATE TABLE IF NOT EXISTS activity_follow (
 CREATE TABLE IF NOT EXISTS venue_hall (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     venue_id        BIGINT        NOT NULL      COMMENT '关联场馆',
-    hall_name       VARCHAR(50)   NOT NULL      COMMENT '影厅名称',
+    hall_name       VARCHAR(50)   NOT NULL      COMMENT '会场名称',
     seat_rows       INT           NOT NULL DEFAULT 10  COMMENT '座位行数',
     seat_cols       INT           NOT NULL DEFAULT 14  COMMENT '座位列数',
     aisle_after_col VARCHAR(50)   DEFAULT ''            COMMENT '过道位于第N列之后,逗号分隔',
     couple_rows     VARCHAR(50)   DEFAULT ''            COMMENT '情侣座行号,逗号分隔',
     disabled_seats  TEXT                                COMMENT '不可用座位JSON [[row,col],...]',
-    hall_type       VARCHAR(50)   DEFAULT '普通厅'       COMMENT '厅类型',
+    hall_type       VARCHAR(50)   DEFAULT '多功能厅'     COMMENT '会场类型',
     create_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     update_time     TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     deleted         INT           DEFAULT 0
