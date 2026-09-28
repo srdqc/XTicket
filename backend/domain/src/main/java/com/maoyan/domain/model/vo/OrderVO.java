@@ -16,7 +16,15 @@ public class OrderVO implements Serializable {
     private Long id;
     private String orderNo;
     private String lockToken;
+    /** 活动名称（canonical public field） */
+    private String activityName;
+    /** 场馆名称（canonical public field） */
+    private String venueName;
+    /** 活动封面（canonical public field） */
+    private String activityCoverUrl;
+    /** @deprecated 兼容旧版前端，请使用 activityName */
     private String movieName;
+    /** @deprecated 兼容旧版前端，请使用 venueName */
     private String cinemaName;
     private String hallName;
     private String showTime;
@@ -31,6 +39,7 @@ public class OrderVO implements Serializable {
     private String payTime;
     private String expireTime;
     private Long scheduleId;
+    /** @deprecated 兼容旧版前端，请使用 activityCoverUrl */
     private String movieImg;
     /** 支付后剩余积分 */
     private Integer remainingPoints;

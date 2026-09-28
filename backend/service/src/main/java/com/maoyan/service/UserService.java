@@ -137,6 +137,7 @@ public class UserService {
         vo.setUserNick(po.getUserNick());
         vo.setUserHeadImg(po.getUserHeadImg());
         vo.setPoints(po.getPoints());
+        vo.setRole(po.getRole());
         if (includeToken) {
             vo.setToken(jwtUtil.generateToken(po.getId(), po.getAccount()));
         }

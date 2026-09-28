@@ -5,6 +5,7 @@ import com.maoyan.dao.mapper.UserMapper;
 import com.maoyan.domain.enums.UserRoleEnum;
 import com.maoyan.domain.model.dto.UserRegisterDTO;
 import com.maoyan.domain.model.po.UserPO;
+import com.maoyan.domain.model.vo.UserVO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -42,12 +43,27 @@ class UserServiceRoleTest {
         });
         when(jwtUtil.generateToken(1001L, "phase4b_user")).thenReturn("token");
 
-        userService.register(dto);
+        UserVO result = userService.register(dto);
 
         ArgumentCaptor<UserPO> captor = ArgumentCaptor.forClass(UserPO.class);
         verify(userMapper).insert(captor.capture());
         assertThat(captor.getValue().getRole()).isEqualTo(UserRoleEnum.USER.name());
+        assertThat(result.getRole()).isEqualTo(UserRoleEnum.USER.name());
         assertThat(Arrays.stream(UserRegisterDTO.class.getDeclaredFields())
                 .map(java.lang.reflect.Field::getName)).doesNotContain("role");
+    }
+
+    @Test
+    void currentUserExposesPersistedCheckInStaffRole() {
+        UserPO staff = new UserPO();
+        staff.setId(2001L);
+        staff.setAccount("staff");
+        staff.setRole(UserRoleEnum.CHECKIN_STAFF.name());
+        staff.setDeleted(0);
+        when(userMapper.selectById(2001L)).thenReturn(staff);
+
+        UserVO result = userService.getUserInfo(2001L);
+
+        assertThat(result.getRole()).isEqualTo(UserRoleEnum.CHECKIN_STAFF.name());
     }
 }

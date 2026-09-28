@@ -13,7 +13,8 @@ import java.util.Map;
 /**
  * 城市接口控制器
  * <p>
- * - GET /dianying/cities.json → 城市列表
+ * - GET /api/cities → 城市列表
+ * - GET /dianying/cities.json → 旧版前端兼容路径
  * </p>
  */
 @Slf4j
@@ -27,10 +28,10 @@ public class CityController {
      * 获取全部城市列表
      * 返回格式: { cts: [...] }
      * <p>
-     * 路径为 /dianying/cities.json，与前端约定一致
+     * canonical 与旧版兼容路径返回相同 contract。
      * </p>
      */
-    @GetMapping("/dianying/cities.json")
+    @GetMapping({"/api/cities", "/dianying/cities.json"})
     public Map<String, Object> getCities() {
         List<CityVO> cities = cityService.getAllCities();
         return Map.of("cts", cities);

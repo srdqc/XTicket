@@ -33,10 +33,12 @@ public class OrderBiz {
         try {
             ActivitySessionPO schedule = activitySessionService.getSessionById(dto.getScheduleId());
             if (schedule != null) {
-                var movieDetail = activityService.getActivityDetail(schedule.getActivityId());
-                if (movieDetail != null) {
-                    orderVO.setMovieName(movieDetail.getName());
-                    orderVO.setMovieImg(movieDetail.getCoverUrl());
+                var activityDetail = activityService.getActivityDetail(schedule.getActivityId());
+                if (activityDetail != null) {
+                    orderVO.setActivityName(activityDetail.getName());
+                    orderVO.setActivityCoverUrl(activityDetail.getCoverUrl());
+                    orderVO.setMovieName(activityDetail.getName());
+                    orderVO.setMovieImg(activityDetail.getCoverUrl());
                 }
             }
         } catch (Exception e) {
