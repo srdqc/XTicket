@@ -6,6 +6,10 @@ Thumbs.db
 *.iml
 *.iws
 *.ipr
+*.tmp
+*.bak
+*.swp
+*.orig
 
 # Logs
 *.log
@@ -34,6 +38,7 @@ frontend/out/
 frontend/.turbo/
 frontend/*.tsbuildinfo
 frontend/next-env.d.ts
+coverage/
 
 # Local database / runtime data
 data/
@@ -53,6 +58,15 @@ AGENTS.md
 # Benchmark runtime secrets and raw output
 scripts/benchmark/results/raw/
 scripts/benchmark/results/phase6c-8-*/
+scripts/benchmark/results/*/
+scripts/benchmark/results/*.csv
+scripts/benchmark/results/*.json
+scripts/benchmark/results/*.txt
+
+# Archives and local dumps
+*.zip
+*.dump
+*.sql.gz
 
 # Keep only selected public benchmark summaries; retain other reports locally.
 scripts/benchmark/results/*.md

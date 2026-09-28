@@ -1,6 +1,6 @@
 
 # =========================================================
-# 猫眼电影 - Docker Compose 单服务器全栈部署（2G内存优化版）
+# XTicket 综合活动票务平台 - Docker Compose 单机全栈运行环境
 #
 # 架构：Next.js(前端) + Spring Boot(后端) + MySQL + Redis + RocketMQ
 # 启动：docker compose up -d --build
