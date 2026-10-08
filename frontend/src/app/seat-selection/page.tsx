@@ -135,7 +135,8 @@ function SeatSelectionContent() {
     if (seat.status === -1) return 'bg-transparent'
     if (seat.status === 1) return 'bg-gray-300'
     if (seat.status === 2) return 'bg-orange-200'
-    if (seat.status === 3 || isSelected) return 'bg-primary'
+    if (seat.status === 3) return 'bg-indigo-300 border-indigo-400'
+    if (isSelected) return 'bg-primary'
     if (seat.couple) return 'bg-pink-100 border-pink-300 hover:bg-pink-200'
     return 'bg-green-100 border-green-300 hover:bg-green-200'
   }
@@ -186,12 +187,12 @@ function SeatSelectionContent() {
                 <span className="text-sm text-gray-400">{layout.hallType}</span>
               </div>
 
-              {/* 银幕 */}
+              {/* 舞台 / 活动区 */}
               <div className="flex justify-center mb-8">
                 <div className="w-[60%] h-1 bg-gradient-to-r from-transparent via-gray-400 to-transparent rounded-full relative">
                   <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-xs text-gray-400 flex items-center gap-1">
                     <Monitor className="w-3.5 h-3.5" />
-                    银幕
+                    舞台 / 活动区
                   </div>
                 </div>
               </div>
@@ -204,7 +205,7 @@ function SeatSelectionContent() {
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-4 h-4 bg-primary rounded" />
-                  <span>已选</span>
+                  <span>当前选择</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-4 h-4 bg-gray-300 rounded" />
@@ -212,7 +213,11 @@ function SeatSelectionContent() {
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-4 h-4 bg-orange-200 rounded" />
-                  <span>锁定</span>
+                  <span>他人锁定</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-4 h-4 bg-indigo-300 border border-indigo-400 rounded" />
+                  <span>我的锁定</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-4 h-4 bg-pink-100 border border-pink-300 rounded" />
@@ -325,7 +330,7 @@ function SeatSelectionContent() {
                 className={`w-full py-3 rounded-full text-white font-medium transition-colors ${
                   selectedSeats.length === 0 || locking
                     ? 'bg-gray-300 cursor-not-allowed'
-                    : 'bg-primary hover:bg-red-600'
+                    : 'bg-primary hover:bg-indigo-700'
                 }`}
               >
                 {locking ? '锁座中...' : `确认选座（${selectedSeats.length}张）`}

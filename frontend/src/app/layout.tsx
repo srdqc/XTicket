@@ -3,8 +3,9 @@ import { Toaster } from 'sonner'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'XTicket - 高校活动票务平台',
-  description: '面向高校综合活动的票务交易平台',
+  title: 'XTicket - 综合活动票务平台',
+  description: '面向固定座位活动的选座、购票与电子票履约平台',
+  icons: { icon: '/favicon.svg' },
 }
 
 export default function RootLayout({

@@ -1,5 +1,7 @@
 package com.maoyan.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.maoyan.dao.mapper.OrderMapper;
 import com.maoyan.dao.mapper.OrderSeatMapper;
 import com.maoyan.dao.mapper.ActivitySessionMapper;
@@ -91,7 +93,7 @@ class OrderServiceSnapshotTest {
     }
 
     @Test
-    void createOrderWritesTrustedSnapshotAndServerSeatInfo() {
+    void createOrderWritesTrustedSnapshotAndServerSeatInfo() throws Exception {
         CreateOrderDTO dto = orderRequest("lock-token-1", List.of(seat(2, 3), seat(1, 4)), "client text");
         when(activitySessionMapper.selectById(40L)).thenReturn(activeSchedule());
         when(orderMapper.selectByLockToken("lock-token-1")).thenReturn(null);
@@ -119,7 +121,14 @@ class OrderServiceSnapshotTest {
         assertThat(saved.getTotalPrice()).isEqualByComparingTo("130.00");
 
         assertThat(result.getMovieName()).isEqualTo("Snapshot Movie");
+        assertThat(result.getActivityName()).isEqualTo("Snapshot Movie");
+        assertThat(result.getVenueName()).isEqualTo("Snapshot Cinema");
         assertThat(result.getSeatsInfo()).isEqualTo("1排4座,2排3座");
+        JsonNode json = new ObjectMapper().valueToTree(result);
+        assertThat(json.get("activityName").asText()).isEqualTo("Snapshot Movie");
+        assertThat(json.get("venueName").asText()).isEqualTo("Snapshot Cinema");
+        assertThat(json.get("movieName").asText()).isEqualTo("Snapshot Movie");
+        assertThat(json.get("cinemaName").asText()).isEqualTo("Snapshot Cinema");
         verify(activitySessionMapper).deductStock(40L, 2);
         verify(businessMetrics).orderCreated();
         InOrder writeOrder = inOrder(orderMapper, seatLockMapper, orderEventOutboxService,
@@ -178,6 +187,8 @@ class OrderServiceSnapshotTest {
 
         assertThat(result.getOrderNo()).isEqualTo("MO202609020001");
         assertThat(result.getMovieName()).isEqualTo("Original Movie");
+        assertThat(result.getActivityName()).isEqualTo("Original Movie");
+        assertThat(result.getVenueName()).isEqualTo("Original Cinema");
         assertThat(result.getSeatsInfo()).isEqualTo("3排5座");
         verify(activitySessionMapper, never()).selectOrderSnapshotSource(anyLong());
         verify(stockService, never()).preDeduct(anyLong(), anyInt());

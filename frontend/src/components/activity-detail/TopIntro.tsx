@@ -102,29 +102,19 @@ export default function TopIntro({ activityDetail }: Props) {
           {activityDetail.englishName && (
             <p className="text-white/70 text-sm">{activityDetail.englishName}</p>
           )}
-          {activityDetail.released && activityDetail.score ? (
-            <div className="flex items-baseline gap-2 mt-2">
-              <span className="text-gold text-3xl font-bold">
-                {activityDetail.score}
-              </span>
-            </div>
-          ) : activityDetail.released ? (
-            <p className="text-gray-300 text-sm mt-2">暂无评分</p>
-          ) : (
-            <p className="mt-2">
-              <span className="text-gold text-lg font-bold">
-                {followCount}
-              </span>
-              <span className="text-white/80 text-sm ml-1">人关注</span>
-            </p>
-          )}
+          <div className="mt-2 flex items-center gap-3">
+            <span className={`rounded-full px-3 py-1 text-xs font-medium ${activityDetail.released ? 'bg-primary text-white' : 'bg-amber-400 text-white'}`}>
+              {activityDetail.released ? '售票中' : '即将开售'}
+            </span>
+            <span className="text-white/80 text-sm">{followCount} 人关注</span>
+          </div>
           <button
             onClick={handleFollow}
             disabled={followLoading}
             className={`mt-3 inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-medium transition ${
               followed
                 ? 'bg-white/20 text-white hover:bg-white/30'
-                : 'bg-primary text-white hover:bg-red-600'
+                : 'bg-primary text-white hover:bg-indigo-700'
             } disabled:opacity-60`}
           >
             <Heart className={`w-4 h-4 ${followed ? 'fill-white' : ''}`} />
@@ -132,10 +122,10 @@ export default function TopIntro({ activityDetail }: Props) {
             <span className="text-white/80">{followCount}</span>
           </button>
           <div className="pt-2 space-y-1.5 text-sm text-gray-300">
-            {activityDetail.category && <p>{activityDetail.category}</p>}
+            {activityDetail.category && <p>活动类型：{activityDetail.category}</p>}
             {activityDetail.source && (
               <p>
-                {activityDetail.source} / {activityDetail.duration}分钟
+                举办城市：{activityDetail.source}{activityDetail.duration ? ` · 活动时长：${activityDetail.duration}分钟` : ''}
               </p>
             )}
             {activityDetail.publishDescription && <p>{activityDetail.publishDescription}</p>}

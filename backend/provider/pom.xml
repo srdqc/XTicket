@@ -37,7 +37,7 @@
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
-        <!-- MySQL (optional, activate with -Pprofile mysql) -->
+        <!-- MySQL runtime driver (used by the Spring docker profile) -->
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>

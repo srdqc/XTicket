@@ -6,6 +6,12 @@ import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import Loading from '@/components/Loading'
 import api from '@/lib/api'
 import type { ActivityItem, VenueDetail, SessionItem } from '@/types'
+import { imgUrlReplace } from '@/lib/utils'
+
+function normalizeHallTypes(value?: string[] | string): string[] {
+  if (Array.isArray(value)) return value
+  return value ? value.split(/[,、\s]+/).filter(Boolean) : []
+}
 
 export default function VenueDetailPage() {
   const router = useRouter()
@@ -102,8 +108,7 @@ export default function VenueDetailPage() {
   const services: { tag: string; desc: string; color: string }[] = []
   if (venue.allowRefund) services.push({ tag: '退', desc: '活动开始前可取消', color: 'orange' })
   if (venue.endorse) services.push({ tag: '改签', desc: '活动开始前可调整', color: 'orange' })
-  if (venue.snack) services.push({ tag: '小吃', desc: '提供小吃饮品服务', color: 'blue' })
-  venue.hallTypes?.forEach((h) => services.push({ tag: h, desc: `${h}会场`, color: 'blue' }))
+  normalizeHallTypes(venue.hallTypes).forEach((h) => services.push({ tag: h, desc: `可用会场：${h}`, color: 'blue' }))
 
   return (
     <div className="min-h-screen bg-white pb-20">
@@ -166,7 +171,7 @@ export default function VenueDetailPage() {
             {selectedActivity && (
               <div
                 className="absolute inset-0 bg-cover bg-center blur-2xl opacity-20"
-                style={{ backgroundImage: `url(${selectedActivity.coverUrl})` }}
+                style={{ backgroundImage: `url(${imgUrlReplace(selectedActivity.coverUrl)})` }}
               />
             )}
 
@@ -185,7 +190,7 @@ export default function VenueDetailPage() {
                       }`}
                     >
                       <img
-                        src={activity.coverUrl}
+                        src={imgUrlReplace(activity.coverUrl)}
                         className="w-full h-full object-cover"
                         alt={activity.name}
                       />
@@ -202,11 +207,9 @@ export default function VenueDetailPage() {
           <div className="text-center border-b border-gray-200 pb-6 mb-6">
             <div className="flex items-center justify-center gap-3 mb-1">
               <h2 className="text-2xl font-bold text-gray-800">{selectedActivity.name}</h2>
-              {selectedActivity.score && Number(selectedActivity.score) > 0 && (
-                <span className="text-[#ff9900] text-xl font-bold">
-                  {Number(selectedActivity.score).toFixed(1)}分
-                </span>
-              )}
+              <span className={`rounded-full px-3 py-1 text-xs ${selectedActivity.released ? 'bg-primary text-white' : 'bg-amber-400 text-white'}`}>
+                {selectedActivity.released ? '售票中' : '即将开售'}
+              </span>
             </div>
             <div className="text-sm text-gray-500 space-x-4">
               {selectedActivity.category && <span>类型：{selectedActivity.category}</span>}
@@ -234,7 +237,7 @@ export default function VenueDetailPage() {
           </div>
         )}
 
-        {/* 排片表格 */}
+        {/* 场次表格 */}
         {scheduleLoading ? (
           <Loading />
         ) : sessions.length === 0 ? (
@@ -247,7 +250,7 @@ export default function VenueDetailPage() {
               <thead className="bg-gray-50 h-12 text-gray-500 font-normal text-sm">
                 <tr>
                   <th className="text-left pl-8 w-[18%]">场次时间</th>
-                  <th className="text-left w-[15%]">语言版本</th>
+                  <th className="text-left w-[15%]">活动形式</th>
                   <th className="text-left w-[15%]">会场</th>
                   <th className="text-left w-[15%]">售价（元）</th>
                   <th className="text-right pr-8">选座购票</th>

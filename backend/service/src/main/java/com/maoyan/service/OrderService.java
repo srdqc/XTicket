@@ -477,6 +477,8 @@ public class OrderService {
         vo.setId(po.getId());
         vo.setOrderNo(po.getOrderNo());
         vo.setLockToken(po.getLockToken());
+        vo.setActivityName(po.getMovieName());
+        vo.setVenueName(po.getCinemaName());
         vo.setMovieName(po.getMovieName());
         vo.setCinemaName(po.getCinemaName());
         vo.setHallName(po.getHallName());

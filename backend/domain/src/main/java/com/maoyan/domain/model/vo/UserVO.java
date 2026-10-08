@@ -18,4 +18,6 @@ public class UserVO implements Serializable {
     private String userHeadImg;
     private String token;
     private Integer points;
+    /** USER 或 CHECKIN_STAFF */
+    private String role;
 }

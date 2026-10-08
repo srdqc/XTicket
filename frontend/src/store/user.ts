@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import api from '@/lib/api'
+import type { UserRole } from '@/types'
 
 interface UserState {
   isLogged: boolean
@@ -9,12 +10,13 @@ interface UserState {
   defaultHeadImg: string
   token: string | null
   points: number
+  role: UserRole | null
 
   loginAsync: (account: string, password: string) => Promise<{ success: boolean; msg?: string }>
   registerAsync: (account: string, password: string, userNick?: string, inviteCode?: string) => Promise<{ success: boolean; msg?: string }>
   logout: () => void
   setPoints: (points: number) => void
-  fetchPoints: () => Promise<void>
+  fetchProfile: () => Promise<void>
 }
 
 export const useUserStore = create<UserState>()(
@@ -24,9 +26,10 @@ export const useUserStore = create<UserState>()(
       userNick: '',
       userHeadImg: undefined,
       defaultHeadImg:
-        'https://p0.meituan.net/movie/7a39daab1a955tried8b521599145a30fe521be9f2d60392d845310.png',
+        '/images/avatar-default.svg',
       token: null,
       points: 0,
+      role: null,
 
       loginAsync: async (account, password) => {
         try {
@@ -35,9 +38,10 @@ export const useUserStore = create<UserState>()(
             set({
               isLogged: true,
               userNick: res.data.userNick || account,
-              userHeadImg: res.data.headImg || undefined,
+              userHeadImg: res.data.userHeadImg || res.data.headImg || undefined,
               token: res.data.token,
               points: res.data.points ?? 0,
+              role: res.data.role || 'USER',
             })
             return { success: true }
           }
@@ -68,20 +72,27 @@ export const useUserStore = create<UserState>()(
           userHeadImg: undefined,
           token: null,
           points: 0,
+          role: null,
         }),
 
       setPoints: (points: number) => set({ points }),
 
-      fetchPoints: async () => {
+      fetchProfile: async () => {
         try {
           const res = await api.getUserInfo()
           if (res.code === 200 && res.data) {
-            set({ points: res.data.points ?? 0 })
+            set({
+              points: res.data.points ?? 0,
+              role: res.data.role || 'USER',
+              userNick: res.data.userNick || get().userNick,
+              userHeadImg: res.data.userHeadImg || get().userHeadImg,
+            })
           }
         } catch {}
       },
     }),
     {
+      // Compatibility key: changing it would silently sign out existing local users.
       name: 'maoyan-user',
       storage: createJSONStorage(() => localStorage),
     }

@@ -77,7 +77,7 @@ export default function RegisterPage() {
           <button
             onClick={handleRegister}
             disabled={loading}
-            className="w-full py-3 bg-primary text-white rounded text-base disabled:opacity-60 hover:bg-red-600 transition-colors"
+            className="w-full py-3 bg-primary text-white rounded text-base disabled:opacity-60 hover:bg-indigo-700 transition-colors"
           >
             {loading ? '注册中...' : '注 册'}
           </button>

@@ -1,13 +1,13 @@
 # =========================================
-# 猫眼后端 - 预构建 JAR 部署 Dockerfile
+# XTicket 后端 - 预构建 JAR 部署 Dockerfile
 #
 # 本地打包好 JAR 后直接 COPY，跳过服务器编译
 # =========================================
 
 FROM eclipse-temurin:17-jre-alpine
 
-LABEL maintainer="maoyan-team"
-LABEL description="猫眼电影后端服务"
+LABEL maintainer="XTicket contributors"
+LABEL description="XTicket 综合活动票务后端服务"
 
 WORKDIR /app
 

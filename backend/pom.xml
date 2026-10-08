@@ -15,8 +15,8 @@
     <artifactId>maoyan-backend</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
-    <name>Maoyan Backend</name>
-    <description>仿猫眼电影后端服务 - 微服务分层架构</description>
+    <name>XTicket Backend</name>
+    <description>XTicket 综合活动票务后端 - Spring Boot 多模块单体</description>
 
     <modules>
         <module>domain</module>

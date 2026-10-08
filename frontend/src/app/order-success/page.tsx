@@ -6,6 +6,7 @@ import { CheckCircle2, Ticket, Home, Coins } from 'lucide-react'
 import Loading from '@/components/Loading'
 import api from '@/lib/api'
 import type { OrderItem } from '@/types'
+import { getOrderDisplay } from '@/lib/order'
 
 function OrderSuccessContent() {
   const router = useRouter()
@@ -24,6 +25,7 @@ function OrderSuccessContent() {
   }, [orderNo])
 
   if (loading) return <Loading />
+  const display = order ? getOrderDisplay(order) : null
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center pt-20">
@@ -39,20 +41,20 @@ function OrderSuccessContent() {
       {order && (
         <div className="bg-white rounded-lg shadow-sm w-[480px] overflow-hidden">
           {/* 活动信息 */}
-          <div className="bg-gradient-to-r from-primary to-red-400 text-white p-6">
-            <div className="text-xl font-bold mb-1">{order.movieName}</div>
-            <div className="text-sm opacity-90">{order.cinemaName} · {order.hallName}</div>
+          <div className="bg-gradient-to-r from-primary to-cyan-500 text-white p-6">
+            <div className="text-xl font-bold mb-1">{display?.activityName}</div>
+            <div className="text-sm opacity-90">{display?.venueName} · {order.hallName}</div>
           </div>
 
           {/* 详情 */}
           <div className="p-6 space-y-4 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-400">活动</span>
-              <span className="text-gray-700">{order.movieName}</span>
+              <span className="text-gray-700">{display?.activityName}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400">场馆</span>
-              <span className="text-gray-700">{order.cinemaName} · {order.hallName}</span>
+              <span className="text-gray-700">{display?.venueName} · {order.hallName}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400">场次时间</span>
@@ -88,7 +90,7 @@ function OrderSuccessContent() {
         {orderNo && (
           <button
             onClick={() => router.push(`/tickets?orderNo=${encodeURIComponent(orderNo)}`)}
-            className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-full hover:bg-red-600 transition-colors"
+            className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-full hover:bg-indigo-700 transition-colors"
           >
             <Ticket className="w-4 h-4" />
             查看电子票

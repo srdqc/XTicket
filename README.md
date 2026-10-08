@@ -1,5 +1,7 @@
 # XTicket
 
+## 项目简介
+
 XTicket 是面向固定座位活动的 C 端综合票务交易与履约服务，覆盖锁座、建单、模拟支付、电子票、核销与退款完整链路。后端采用 Spring Boot Maven 多模块单体，前端采用 Next.js；项目重点解决并发锁座、防超卖、交易一致性、可靠事件发布和可复现性能验证。
 
 ## 技术栈
@@ -27,7 +29,7 @@ flowchart LR
     RocketMQ --> Backend
 ```
 
-项目是模块化单体，不包含注册中心、配置中心、微服务网关、Redis Cluster 或 MySQL 主从架构。
+项目是模块化单体，不包含注册中心、配置中心、独立 API Gateway、Redis Cluster 或 MySQL 主从架构。
 
 ## 核心业务
 
@@ -68,7 +70,7 @@ flowchart LR
 
 业务数据和领域事件在同一个本地事务中写入 MySQL。后台 publisher 通过 CAS claim 获取事件，以固定有界并发发送到 RocketMQ，成功后标记 `PUBLISHED`；失败事件保留稳定 eventId 并按既有退避语义重试，超时的 `PROCESSING` 事件可恢复。消费者通过 `(consumer_group, event_id)` 唯一键实现幂等。
 
-该链路提供 **at-least-once delivery + idempotent consumer**，不声称 exactly-once。
+该链路采用 **at-least-once delivery + idempotent consumer**。
 
 ### 电子票履约
 
@@ -144,8 +146,11 @@ Nginx 默认入口为 `http://localhost`。
 
 ```powershell
 cd backend
-.\mvnw.cmd -pl provider -am spring-boot:run
+.\mvnw.cmd -q clean package
+.\mvnw.cmd -f provider\pom.xml spring-boot:run
 ```
+
+H2 也用于部分自动化测试，但不是完整交易演示环境；体验 Redis/Redisson 锁座、RocketMQ 和 Transactional Outbox 时请使用 Docker Compose。
 
 另一个终端启动前端：
 
@@ -170,12 +175,14 @@ backend/
 frontend/       Next.js C 端页面
 docker/         MySQL、Nginx、RocketMQ 配置
 scripts/        API 验收和可复现 Benchmark
+  benchmark/    固定 fixture、负载场景、采集器与公开摘要
+  migration/    已有数据升级脚本
 ```
 
 ## 项目边界
 
 - 支付方式为 `MOCK_POINTS` 积分模拟支付，未接入真实第三方支付、支付回调或退款渠道。
-- 当前形态是 Spring Boot Maven 多模块单体，不是微服务系统。
+- 当前形态是 Spring Boot Maven 多模块单体，不包含服务拆分与分布式治理组件。
 - Benchmark 在 client/server 同机的本地 Docker 环境运行，只用于回归和优化前后对比。
 - 项目未声明生产级容量、可用性或 SLA。
 
